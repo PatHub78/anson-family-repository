@@ -1,17 +1,5 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 
-export default function HomePage() {
-  return (
-    <main>
-      <h1>Welcome to We Are The Ansons 👋</h1>
-
-      <nav>
-        <ul>
-          <li>
-            <Link href="/about">About</Link>
-          </li>
-        </ul>
-      </nav>
-    </main>
-  );
+export default function Home() {
+  redirect("/dashboard");
 }
