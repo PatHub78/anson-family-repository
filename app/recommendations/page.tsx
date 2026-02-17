@@ -10,7 +10,7 @@ const supabase = createClient(
 );
 
 interface Recommendation {
-  id: string;
+  id: number;
   full_name: string;
   type: string;
   title: string | null;
@@ -322,7 +322,7 @@ export default function RecommendationsPage() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
-          <div className="bg-white rounded-xl p-6 w-[400px] space-y-4">
+          <div className="bg-white rounded-xl p-6 w-100 space-y-4">
             <div className="text-lg font-semibold">Add Recommendation</div>
 
             {/* TYPE */}
