@@ -67,7 +67,7 @@ export default function RecommendationsPage() {
         `)
         .eq("approved", true);
 
-      if (!error) setRows(data ?? []);
+      if (!error) setRows((data ?? []) as Recommendation[]);
       else console.error(error);
     };
 
@@ -203,7 +203,7 @@ export default function RecommendationsPage() {
         `)
         .eq("approved", true);
 
-      setRows(data ?? []);
+      setRows((data ?? []) as Recommendation[]);
     };
 
   return (
