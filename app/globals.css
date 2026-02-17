@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Optional theme variables */
+:root {
+  --background: #f3f4f6;
+  --foreground: #111827;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ✅ Tailwind v4 safe custom class */
+.input {
+  @apply w-full rounded-xl border border-gray-400 px-4 py-3 outline-none focus:ring-2 focus:ring-black bg-white text-black;
+}
+
+.sharpie {
+  font-family: var(--font-marker), cursive;
+}
+
+.pill {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid #ddd;
+  font-size: 14px;
+}
+
+.pill-active {
+  background: black;
+  color: white;
+  border-color: black;
+}
