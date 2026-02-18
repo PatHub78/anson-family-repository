@@ -37,11 +37,11 @@ export default function RootLayout({
       <body className="text-gray-900">
 
         <header className="bg-white border-b border-gray-200">
-          <div className="mx-auto max-w-6xl h-20 px-6 flex items-center">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-center gap-3">
 
             <div className="text-4xl mr-10">📖</div>
 
-            <nav className="flex-1 flex justify-evenly text-lg font-semibold">
+            <nav className="flex-1 flex flex-wrap justify-center gap-4 text-sm sm:text-lg font-semibold">
               <NavLink href="/about" label="Winnie & Frank" />
               <NavLink href="/submit" label="Submit" />
               <NavLink href="/album" label="Anson Album" />

@@ -130,7 +130,7 @@ const ScoreCard = ({
   name: string;
   value: number;
 }) => (
-  <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200 w-56">
+  <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200 w-full">
     <div className="text-xs text-gray-500 mb-3">{title}</div>
 
     <div className="flex items-center gap-3">
@@ -276,24 +276,24 @@ if (loading) {
 
   return (
     <AuthGuard>
-      <div className="space-y-16">
+      <div className="space-y-10 sm:space-y-16">
 
         <header className="text-center space-y-4">
-          <h1 className="text-5xl font-semibold tracking-tight">
+          <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight">
             Anson Family ⚡ Pioneers of Action!
           </h1>
 
-          <div className="text-3xl font-bold">
+          <div className="text-xl sm:text-3xl font-bold">
             {metricLabels[metric].toUpperCase()}
           </div>
         </header>
 
-        <div className="flex justify-center gap-6">
+        <div className="flex flex-wrap justify-center gap-3">
           {(Object.keys(metricLabels) as Metric[]).map((m) => (
             <button
               key={m}
               onClick={() => setMetric(m)}
-              className={`px-10 py-4 rounded-full text-xl font-semibold transition ${
+              className={`px-5 py-2 rounded-full text-sm sm:text-xl font-semibold transition ${
                 metric === m
                   ? "bg-black text-white"
                   : "bg-white shadow-sm ring-1 ring-gray-200"
@@ -304,31 +304,31 @@ if (loading) {
           ))}
         </div>
 
-        <div className="flex justify-center gap-8 flex-wrap">
+        <div className="flex justify-center gap-4 sm:gap-8 flex-wrap">
           {sorted.map((p, index) => (
             <Avatar key={p.id} name={p.id} rank={index + 1} />
           ))}
         </div>
 
         {/* Main Row */}
-        <div className="grid grid-cols-[160px_4fr_160px] gap-8 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[160px_4fr_160px] gap-6 lg:gap-8 items-center">
 
           {/* Metric Image */}
           <div className="rounded-3xl overflow-hidden shadow-sm ring-1 ring-gray-200 bg-white">
             <img
               src={getMetricImage(metric)}
               alt="metric visual"
-              style={{ width: "100%", height: 420, objectFit: "cover" }}
+              className="w-full h-64 lg:h-[420px] object-cover"
             />
           </div>
 
           {/* Chart */}
-          <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-gray-200">
-            <ResponsiveContainer width="100%" height={420}>
+          <div className="rounded-3xl bg-white p-4 sm:p-8 shadow-sm ring-1 ring-gray-200">
+            <ResponsiveContainer width="100%" height={320}>
               <BarChart 
                 data={sorted} 
                 layout="vertical" 
-                margin={{ top: 10, right: 40, left: 10, bottom: 10 }}
+                margin={{ top: 10, right: 35, left: 0, bottom: 10 }}
               >
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
 
