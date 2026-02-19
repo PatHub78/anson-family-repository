@@ -143,7 +143,7 @@ export default function WordSmithPage() {
 
   const loadAll = async () => {
     const { data: game } = await supabase
-      .from("wordplay_game")
+      .from("wordsmith_game")
       .select("*")
       .single();
 
@@ -248,28 +248,43 @@ export default function WordSmithPage() {
       return;
     }
 
-    const playerEmail = "local_player";
-    const existing = scores.find(s => s.email === playerEmail);
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user?.email) {
+      alert("Not authenticated");
+      return;
+    }
+
+    const playerEmail = user.email;
 
     if (playerEmail === (await supabase
-      .from("wordplay_game")
+      .from("wordsmith_game")
       .select("last_player_email")
       .single()).data?.last_player_email) {
       alert("Cannot play twice in a row");
       return;
     }
 
-    await supabase.from("wordplay_game").update({
+    await supabase.from("wordsmith_game").update({
       current_word: cleanWord,
       played_words: [...playedWords, cleanWord],
       last_player_email: playerEmail,
       updated_at: new Date().toISOString()
     }).eq("id", 1);
 
+    const { data: existingRow } = await supabase
+      .from("wordsmith_scores")
+      .select("points, full_name")
+      .eq("email", playerEmail)
+      .single();
+
+    const newPoints = (existingRow?.points ?? 0) + move.points;
+    const resolvedName = existingRow?.full_name ?? "Local Player";
+
     await supabase.from("wordsmith_scores").upsert({
       email: playerEmail,
-      full_name: existing?.full_name ?? "Local Player",
-      points: (existing?.points ?? 0) + move.points,
+      full_name: resolvedName,
+      points: newPoints,
       last_word: cleanWord,
       updated_at: new Date().toISOString()
     });
@@ -281,7 +296,7 @@ export default function WordSmithPage() {
   const resetGame = async () => {
     const seed = "planet";
 
-    await supabase.from("wordplay_game").update({
+    await supabase.from("wordsmith_game").update({
       current_word: seed,
       played_words: [seed],
       last_player_email: null,
@@ -389,6 +404,9 @@ export default function WordSmithPage() {
         <input
           value={nextWord}
           onChange={e => setNextWord(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter") submitMove();
+          }}
           placeholder="Enter word"
           className="border rounded-lg px-3 py-2"
         />
@@ -405,10 +423,11 @@ export default function WordSmithPage() {
             : "-"}
         </div>
 
+        {/*    
         <button onClick={resetGame} className="text-xs underline">
           Reset Game
         </button>
-
+        */}
       </div>
     </AuthGuard>
   );
