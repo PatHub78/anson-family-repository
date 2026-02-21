@@ -83,10 +83,19 @@ function isChangeTwoLetters(a: string, b: string) {
 function isAddThreeLetters(a: string, b: string) {
   if (b.length !== a.length + 3) return false;
 
-  if (b.startsWith(a)) return false; // prefix
-  if (b.endsWith(a)) return false;   // suffix
+  if (b.startsWith(a)) return false;
+  if (b.endsWith(a)) return false;
 
-  return b.includes(a);
+  // Check subsequence (letters in order)
+  let i = 0;
+  for (let j = 0; j < b.length; j++) {
+    if (b[j] === a[i]) {
+      i++;
+      if (i === a.length) break;
+    }
+  }
+
+  return i === a.length;
 }
 
 function classifyMove(a: string, b: string) {
@@ -222,6 +231,12 @@ export default function WordSmithPage() {
       .trim()
       .toLowerCase()
       .replace(/[^a-z]/g, "");
+
+    if (cleanWord.length < 3) {
+      alert("Word too short");
+      return;
+    }
+
     if (!dictionary) {
       alert("Dictionary not loaded yet");
       return;
