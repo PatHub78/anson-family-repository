@@ -3478,7 +3478,6 @@ flew
 jacob
 noon
 helicopter
-helical
 dishes
 spin
 charm
