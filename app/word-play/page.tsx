@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import AuthGuard from "@/app/components/AuthGuard";
 import { createClient } from "@supabase/supabase-js";
 import { Alfa_Slab_One } from "next/font/google";
@@ -10,440 +10,742 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const alfaSlab = Alfa_Slab_One({
-  weight: "400",
-  subsets: ["latin"],
-});
+const alfaSlab = Alfa_Slab_One({ weight: "400", subsets: ["latin"] });
 
-/* -----------------------------
-   Helpers
------------------------------ */
+// ────────────────────────────────────────────────────────────────────
+// Types
+// ────────────────────────────────────────────────────────────────────
+
+interface GameState {
+  current_word: string;
+  played_words: string[];
+  last_player_email: string | null;
+  updated_at: string;
+}
+
+interface ScoreRow {
+  email: string;
+  full_name: string;
+  points: number;
+  last_word: string | null;
+  words_played: string[];
+}
+
+interface Winner {
+  id: number;
+  full_name: string;
+  email: string;
+  points: number;
+  winning_word: string | null;
+  week_start: string;
+}
+
+interface FloatingPoint {
+  id: number;
+  points: number;
+  type: string;
+  x: number;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────────────
 
 function getAvatarUrl(name: string) {
   const fileName = name.toLowerCase().replaceAll(" ", "-") + ".jpg";
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${fileName}`;
 }
 
-function getFirstName(fullName: string) {
-  return fullName.split(" ")[0];
+function firstName(name: string) {
+  return name?.split(" ")[0] ?? name;
 }
 
-/* -----------------------------
-   Reset Clock Logic
------------------------------ */
-
-function getNextResetDate() {
+/** Current week's Monday in UTC */
+function getCurrentWeekMonday(): string {
   const now = new Date();
-  const day = now.getUTCDay(); // Monday = 1
-  const diff = (8 - day) % 7;
+  const utcDay = now.getUTCDay();
+  const diff = utcDay === 0 ? -6 : 1 - utcDay;
+  const monday = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + diff
+  ));
+  return monday.toISOString().split("T")[0];
+}
 
-  const nextMonday = new Date(now);
-  nextMonday.setUTCDate(now.getUTCDate() + diff);
-  nextMonday.setUTCHours(20, 0, 0, 0); // 3PM Central ≈ 20:00 UTC
+/** Next Monday 15:00 CET (UTC+1) */
+function getNextResetDate(): Date {
+  const now = new Date();
+  const CET = 1 * 60 * 60 * 1000;
+  const nowCET = new Date(now.getTime() + CET);
+  const utcDay = nowCET.getUTCDay();
+  // Days until next Monday (always at least 1 if it's Monday and past 15:00)
+  let daysUntil = utcDay === 1
+    ? (nowCET.getUTCHours() >= 15 ? 7 : 0)
+    : utcDay === 0 ? 1 : (8 - utcDay) % 7;
 
+  const nextMonday = new Date(Date.UTC(
+    nowCET.getUTCFullYear(),
+    nowCET.getUTCMonth(),
+    nowCET.getUTCDate() + daysUntil,
+    14, 0, 0 // 15:00 CET = 14:00 UTC
+  ));
   return nextMonday;
 }
 
-/* -----------------------------
-   Move Engine
------------------------------ */
+function getTimeRemaining() {
+  const diff = getNextResetDate().getTime() - Date.now();
+  if (diff <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0 };
+  return {
+    days:    Math.floor(diff / 86400000),
+    hours:   Math.floor((diff % 86400000) / 3600000),
+    minutes: Math.floor((diff % 3600000) / 60000),
+    seconds: Math.floor((diff % 60000) / 1000),
+  };
+}
+
+function pad(n: number) { return String(n).padStart(2, "0"); }
+
+// ────────────────────────────────────────────────────────────────────
+// Move Engine (unchanged logic, cleaner structure)
+// ────────────────────────────────────────────────────────────────────
 
 function isDropOneLetter(a: string, b: string) {
   if (a.length !== b.length + 1) return false;
-
-  for (let i = 0; i < a.length; i++) {
+  for (let i = 0; i < a.length; i++)
     if (a.slice(0, i) + a.slice(i + 1) === b) return true;
-  }
-
   return false;
 }
 
 function isRearrange(a: string, b: string) {
-  if (a.length !== b.length) return false;
-  if (a === b) return false;
-
-  const sortA = a.split("").sort().join("");
-  const sortB = b.split("").sort().join("");
-
-  return sortA === sortB;
+  if (a.length !== b.length || a === b) return false;
+  return a.split("").sort().join("") === b.split("").sort().join("");
 }
 
 function isChangeTwoLetters(a: string, b: string) {
   if (a.length !== b.length) return false;
-
   let diffs = 0;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) diffs++;
-    if (diffs > 2) return false;
-  }
-
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i] && ++diffs > 2) return false;
   return diffs === 2;
 }
 
 function isAddThreeLetters(a: string, b: string) {
   if (b.length !== a.length + 3) return false;
-
-  if (b.startsWith(a)) return false;
-  if (b.endsWith(a)) return false;
-
-  // Check subsequence (letters in order)
+  if (b.startsWith(a) || b.endsWith(a)) return false;
   let i = 0;
-  for (let j = 0; j < b.length; j++) {
-    if (b[j] === a[i]) {
-      i++;
-      if (i === a.length) break;
-    }
-  }
-
+  for (let j = 0; j < b.length; j++) if (b[j] === a[i]) { i++; if (i === a.length) break; }
   return i === a.length;
 }
 
-function classifyMove(a: string, b: string) {
-  if (isDropOneLetter(a, b)) return { valid: true, points: 3, type: "DROP" };
-  if (isChangeTwoLetters(a, b)) return { valid: true, points: 2, type: "CHANGE" };
-  if (isRearrange(a, b)) return { valid: true, points: 5, type: "REARRANGE" };
-  if (isAddThreeLetters(a, b)) return { valid: true, points: 7, type: "ADD" };
+const MOVES = [
+  { check: isDropOneLetter,    points: 3, type: "DROP",      label: "Drop a letter",    color: "#f59e0b" },
+  { check: isChangeTwoLetters, points: 2, type: "CHANGE",    label: "Change 2 letters", color: "#3b82f6" },
+  { check: isRearrange,        points: 5, type: "REARRANGE", label: "Rearrange",        color: "#8b5cf6" },
+  { check: isAddThreeLetters,  points: 7, type: "ADD",       label: "Add 3 letters",    color: "#10b981" },
+];
 
-  return { valid: false };
+function classifyMove(a: string, b: string) {
+  for (const move of MOVES)
+    if (move.check(a, b)) return { valid: true, ...move };
+  return { valid: false, points: 0, type: "", label: "", color: "" };
 }
 
-/* -----------------------------
-   Banner
------------------------------ */
+// ────────────────────────────────────────────────────────────────────
+// Word Tile
+// ────────────────────────────────────────────────────────────────────
 
-const WordSmithBanner = () => {
-  const letters = "WordSmith".split("");
-
+function WordTile({ letter, delay = 0, big = false }: { letter: string; delay?: number; big?: boolean }) {
   return (
-    <div className={`${alfaSlab.className} text-4xl sm:text-6xl tracking-widest select-none`}>
-      {letters.map((l, i) => {
-        const rotation = [-2, 1, -1.5, 0.5, -0.8, 1.2, -1.1, 0.7, -0.6][i] || 0;
-
-        return (
-          <span
-            key={i}
-            style={{
-              display: "inline-block",
-              transform: `rotate(${rotation}deg) scale(0.6)`,
-              animation: `type-stamp 420ms cubic-bezier(.2,.7,.3,1) forwards`,
-              animationDelay: `${i * 140}ms`   // ← BIG change (slower)
-            }}
-            className="px-2"
-          >
-            {l}
-          </span>
-        );
-      })}
+    <div
+      className={`${alfaSlab.className} inline-flex items-center justify-center rounded-xl font-black select-none`}
+      style={{
+        width: big ? 56 : 40,
+        height: big ? 64 : 48,
+        background: "linear-gradient(145deg, #fff 0%, #f3f4f6 100%)",
+        boxShadow: "0 2px 0 #d1d5db, 0 4px 8px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.8)",
+        fontSize: big ? 28 : 20,
+        color: "#1f2937",
+        border: "1px solid #e5e7eb",
+        animation: `tileIn 0.3s cubic-bezier(0.34,1.56,0.64,1) both`,
+        animationDelay: `${delay}ms`,
+      }}
+    >
+      {letter.toUpperCase()}
     </div>
   );
-};
+}
 
-/* -----------------------------
-   Page
------------------------------ */
+function WordDisplay({ word, big = false }: { word: string; big?: boolean }) {
+  return (
+    <div className="flex gap-1.5 justify-center flex-wrap">
+      {word.split("").map((l, i) => (
+        <WordTile key={`${word}-${i}`} letter={l} delay={i * 60} big={big} />
+      ))}
+    </div>
+  );
+}
 
-export default function WordSmithPage() {
-  const [currentWord, setCurrentWord] = useState<string | null>(null);
-  const [playedWords, setPlayedWords] = useState<string[]>([]);
-  const [scores, setScores] = useState<any[]>([]);
-  const [dictionary, setDictionary] = useState<Set<string> | null>(null);
-  const [nextWord, setNextWord] = useState("");
-  const [timeLeft, setTimeLeft] = useState("");
+// ────────────────────────────────────────────────────────────────────
+// Countdown
+// ────────────────────────────────────────────────────────────────────
 
-  const loadAll = async () => {
-    const { data: game } = await supabase
-      .from("wordsmith_game")
-      .select("*")
-      .single();
-
-    if (game) {
-      setCurrentWord(game.current_word);
-      setPlayedWords(game.played_words ?? []);
-    }
-
-    const { data: activePlayers } = await supabase
-      .from("active_profiles")
-      .select("email, full_name");
-
-    const { data: scoreRows } = await supabase
-      .from("wordsmith_scores")
-      .select("*")
-      .order("points", { ascending: false });
-
-    if (activePlayers) {
-      const merged = activePlayers.map(player => {
-        const playerHistory: Record<string, string[]> = {};
-
-        (game.played_words ?? []).forEach((word: string) => {
-          const scorer = scoreRows?.find(s => s.last_word === word);
-          if (!scorer) return;
-
-          if (!playerHistory[scorer.email]) {
-            playerHistory[scorer.email] = [];
-          }
-
-          playerHistory[scorer.email].push(word);
-        });
-        const score = scoreRows?.find(s => s.email === player.email);
-
-        return {
-          email: player.email,
-          full_name: player.full_name,
-          points: score?.points ?? 0,
-          last_word: score?.last_word ?? null,
-          history: playerHistory[player.email] ?? []
-        };
-      });
-
-      merged.sort((a, b) => b.points - a.points);
-
-      setScores(merged);
-    }
-
-  };
-
+function Countdown() {
+  const [time, setTime] = useState(getTimeRemaining());
   useEffect(() => {
-    loadAll();
-
-    fetch("/words.txt")
-      .then(r => r.text())
-      .then(text => {
-        const words = text.split("\n").map(w => w.trim().toLowerCase());
-        setDictionary(new Set(words));
-      });
-
-    const timer = setInterval(() => {
-      const diff = getNextResetDate().getTime() - Date.now();
-
-      const hours = Math.floor(diff / 3600000);
-      const mins = Math.floor((diff % 3600000) / 60000);
-
-      setTimeLeft(`${hours}h ${mins}m`);
-    }, 1000);
-
-    return () => clearInterval(timer);
+    const t = setInterval(() => setTime(getTimeRemaining()), 1000);
+    return () => clearInterval(t);
   }, []);
 
-  const submitMove = async () => {
-    if (!currentWord || !nextWord) return;
+  return (
+    <div className="flex items-center justify-center gap-2 text-sm">
+      <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>
+        Next reset
+      </span>
+      <span style={{ color: "rgba(255,255,255,0.85)", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
+        {time.days > 0 && `${time.days}d `}{pad(time.hours)}h {pad(time.minutes)}m {pad(time.seconds)}s
+      </span>
+    </div>
+  );
+}
 
-    const cleanWord = nextWord
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z]/g, "");
+// ────────────────────────────────────────────────────────────────────
+// Move Rules Card
+// ────────────────────────────────────────────────────────────────────
 
-    if (cleanWord.length < 3) {
-      alert("Word too short");
-      return;
-    }
+function RulesCard() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+      <button
+        onClick={() => setOpen((p) => !p)}
+        className="w-full flex items-center justify-between px-5 py-4 text-sm font-bold text-gray-700 hover:bg-gray-50 transition"
+      >
+        <span>📖 How to Play</span>
+        <span style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "0.2s" }}>▾</span>
+      </button>
 
-    if (!dictionary) {
-      alert("Dictionary not loaded yet");
-      return;
-    }
+      {open && (
+        <div className="px-5 pb-5 space-y-4 border-t border-gray-100">
+          <p className="text-sm text-gray-500 pt-3">
+            Each week starts with a seed word. Transform it by one of four moves, earn points, climb the leaderboard. You <strong>cannot play twice in a row</strong>.
+          </p>
 
-    if (!dictionary.has(cleanWord)) {
-      alert("Not in dictionary");
-      return;
-    }
+          <div className="grid grid-cols-2 gap-3">
+            {MOVES.map((m) => (
+              <div
+                key={m.type}
+                className="rounded-xl p-3 space-y-1"
+                style={{ background: m.color + "14", border: `1px solid ${m.color}33` }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color: m.color }}>
+                    {m.label}
+                  </span>
+                  <span
+                    className="text-xs font-black px-2 py-0.5 rounded-full"
+                    style={{ background: m.color, color: "#fff" }}
+                  >
+                    +{m.points}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-500">
+                  {m.type === "DROP"      && "alarm → larm"}
+                  {m.type === "CHANGE"    && "alarm → alert"}
+                  {m.type === "REARRANGE" && "latent → talent"}
+                  {m.type === "ADD"       && "tile → tensile"}
+                </div>
+              </div>
+            ))}
+          </div>
 
-    if (playedWords.includes(cleanWord)) {
-      alert("Already used");
-      return;
-    }
+          <p className="text-xs text-gray-400">
+            Add 3 letters cannot be a simple prefix or suffix. Words must be in the dictionary. No repeats.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
-    if (cleanWord === currentWord) {
-      alert("Word must change");
-      return;
-    }
+// ────────────────────────────────────────────────────────────────────
+// Main Page
+// ────────────────────────────────────────────────────────────────────
 
-    const move = classifyMove(currentWord, cleanWord);
-    if (!move.valid) {
-      alert(`Invalid move.\n\nAllowed:\n• Drop 1 letter\n• Change 2 letters\n• Rearrange letters\n• Add 3 letters (not prefix/suffix)`);
-      return;
-    }
+export default function WordSmithPage() {
+  const [game, setGame]           = useState<GameState | null>(null);
+  const [scores, setScores]       = useState<ScoreRow[]>([]);
+  const [winners, setWinners]     = useState<Winner[]>([]);
+  const [dictionary, setDictionary] = useState<Set<string> | null>(null);
+  const [nextWord, setNextWord]   = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [myEmail, setMyEmail]     = useState<string | null>(null);
+  const [myName, setMyName]       = useState<string>("");
+  const [error, setError]         = useState<string | null>(null);
+  const [floaters, setFloaters]   = useState<FloatingPoint[]>([]);
+  const [justPlayed, setJustPlayed] = useState<string | null>(null);
+  const floaterIdRef = useRef(0);
 
-    const { data: { user } } = await supabase.auth.getUser();
+  // Load dictionary
+  useEffect(() => {
+    fetch("/words.txt")
+      .then((r) => r.text())
+      .then((text) => {
+        setDictionary(new Set(text.split("\n").map((w) => w.trim().toLowerCase()).filter(Boolean)));
+      });
+  }, []);
 
-    if (!user?.email) {
-      alert("Not authenticated");
-      return;
-    }
+  // Load current user
+  useEffect(() => {
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.email) return;
+      setMyEmail(user.email);
 
-    const playerEmail = user.email;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("email", user.email)
+        .single();
+      setMyName(profile?.full_name ?? "");
+    };
+    init();
+  }, []);
 
-    if (playerEmail === (await supabase
-      .from("wordsmith_game")
-      .select("last_player_email")
-      .single()).data?.last_player_email) {
-      alert("Cannot play twice in a row");
-      return;
-    }
+  // Load game state + scores + winners
+  const loadAll = useCallback(async () => {
+    const [{ data: gameData }, { data: scoreData }, { data: winnerData }, { data: activePlayers }] =
+      await Promise.all([
+        supabase.from("wordsmith_game").select("*").single(),
+        supabase.from("wordsmith_scores").select("*").order("points", { ascending: false }),
+        supabase.from("wordsmith_winners").select("*").order("week_start", { ascending: false }).limit(10),
+        supabase.from("active_profiles").select("email, full_name"),
+      ]);
 
-    await supabase.from("wordsmith_game").update({
-      current_word: cleanWord,
-      played_words: [...playedWords, cleanWord],
-      last_player_email: playerEmail,
-      updated_at: new Date().toISOString()
-    }).eq("id", 1);
+    if (gameData) setGame(gameData);
 
-    const { data: existingRow } = await supabase
-      .from("wordsmith_scores")
-      .select("points, full_name")
-      .eq("email", playerEmail)
-      .single();
+    // Build per-player word history from played_words + scores
+    const playedWords: string[] = gameData?.played_words ?? [];
+    const scoreMap = new Map((scoreData ?? []).map((s: any) => [s.email, s]));
 
-    const newPoints = (existingRow?.points ?? 0) + move.points;
-    const resolvedName = existingRow?.full_name ?? "Local Player";
-
-    await supabase.from("wordsmith_scores").upsert({
-      email: playerEmail,
-      full_name: resolvedName,
-      points: newPoints,
-      last_word: cleanWord,
-      updated_at: new Date().toISOString()
+    const merged: ScoreRow[] = (activePlayers ?? []).map((p: any) => {
+      const s: any = scoreMap.get(p.email);
+      // words_played is stored in wordsmith_scores if you add the column,
+      // otherwise we fall back to last_word only
+      return {
+        email: p.email,
+        full_name: p.full_name,
+        points: s?.points ?? 0,
+        last_word: s?.last_word ?? null,
+        words_played: s?.words_played ?? [],
+      };
     });
 
-    setNextWord("");
-    loadAll();
-  };
+    merged.sort((a, b) => b.points - a.points);
+    setScores(merged);
+    setWinners((winnerData ?? []) as Winner[]);
+  }, []);
 
-  const resetGame = async () => {
-    const seed = "planet";
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Check if reset is needed when page loads or tab regains focus
+  useEffect(() => {
+    const checkReset = async () => {
+      const { data: gameData } = await supabase.from("wordsmith_game").select("updated_at").single();
+      if (!gameData) return;
+
+      const lastUpdate = new Date(gameData.updated_at).getTime();
+      const resetTime  = getNextResetDate().getTime() - 7 * 24 * 60 * 60 * 1000; // last reset
+
+      // If last update was before most recent reset window, auto-reset
+      if (lastUpdate < resetTime) {
+        await handleAutoReset();
+      }
+    };
+    checkReset();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleAutoReset = async () => {
+    // Save winner before clearing
+    const { data: topScore } = await supabase
+      .from("wordsmith_scores")
+      .select("*")
+      .order("points", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (topScore && topScore.points > 0) {
+      await supabase.from("wordsmith_winners").insert({
+        full_name:    topScore.full_name,
+        email:        topScore.email,
+        points:       topScore.points,
+        winning_word: topScore.last_word,
+        week_start:   getCurrentWeekMonday(),
+      });
+    }
+
+    const seeds = ["planet", "bridge", "flame", "storm", "silver", "forest", "shadow", "anchor"];
+    const seed = seeds[Math.floor(Math.random() * seeds.length)];
 
     await supabase.from("wordsmith_game").update({
-      current_word: seed,
-      played_words: [seed],
-      last_player_email: null,
-      updated_at: new Date().toISOString()
+      current_word:       seed,
+      played_words:       [seed],
+      last_player_email:  null,
+      updated_at:         new Date().toISOString(),
     }).eq("id", 1);
 
     await supabase.from("wordsmith_scores").delete().neq("email", "");
-
     loadAll();
   };
 
-  const preview =
-    currentWord && nextWord
-      ? classifyMove(currentWord, nextWord.trim().toLowerCase().replace(/[^a-z]/g, ""))
-      : null;
+  const addFloater = (points: number, type: string) => {
+    const id = ++floaterIdRef.current;
+    const x = 40 + Math.random() * 20;
+    setFloaters((prev) => [...prev, { id, points, type, x }]);
+    setTimeout(() => setFloaters((prev) => prev.filter((f) => f.id !== id)), 1500);
+  };
+
+  const submitMove = async () => {
+    if (!game || !nextWord || submitting) return;
+    setError(null);
+
+    const clean = nextWord.trim().toLowerCase().replace(/[^a-z]/g, "");
+
+    if (clean.length < 3) return setError("Word must be at least 3 letters.");
+    if (!dictionary)      return setError("Dictionary still loading…");
+    if (!dictionary.has(clean)) return setError(`"${clean}" is not in the dictionary.`);
+    if (game.played_words.includes(clean)) return setError(`"${clean}" has already been played this round.`);
+    if (clean === game.current_word)       return setError("Word must change.");
+    if (myEmail && myEmail === game.last_player_email) return setError("You can't play two words in a row — let someone else go!");
+
+    const move = classifyMove(game.current_word, clean);
+    if (!move.valid) return setError("Invalid move. Check the rules below for allowed transformations.");
+
+    setSubmitting(true);
+
+    // Update game state
+    const newPlayedWords = [...game.played_words, clean];
+    await supabase.from("wordsmith_game").update({
+      current_word:      clean,
+      played_words:      newPlayedWords,
+      last_player_email: myEmail,
+      updated_at:        new Date().toISOString(),
+    }).eq("id", 1);
+
+    // Update score
+    const { data: existing } = await supabase
+      .from("wordsmith_scores")
+      .select("points, full_name")
+      .eq("email", myEmail)
+      .single();
+
+    const newPoints = (existing?.points ?? 0) + move.points;
+
+    await supabase.from("wordsmith_scores").upsert({
+      email:      myEmail,
+      full_name:  myName || existing?.full_name || "Player",
+      points:     newPoints,
+      last_word:  clean,
+      updated_at: new Date().toISOString(),
+    });
+
+    addFloater(move.points, move.type);
+    setJustPlayed(clean);
+    setTimeout(() => setJustPlayed(null), 2000);
+    setNextWord("");
+    setSubmitting(false);
+    loadAll();
+  };
+
+  const currentWord = game?.current_word ?? "";
+  const clean = nextWord.trim().toLowerCase().replace(/[^a-z]/g, "");
+  const preview = currentWord && clean ? classifyMove(currentWord, clean) : null;
+  const isMyTurn = myEmail !== game?.last_player_email;
 
   return (
     <AuthGuard>
-      <div className="space-y-6">
+      <div className="min-h-screen -mx-6 -my-10" style={{ background: "#f8f7f4" }}>
 
-        <WordSmithBanner />
+        {/* ── Hero ── */}
+        <div
+          className="relative px-6 py-12 text-center overflow-hidden"
+          style={{ background: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)" }}
+        >
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <div style={{ position:"absolute", top:"-60px", right:"-60px", width:"300px", height:"300px", borderRadius:"50%", background:"radial-gradient(circle, rgba(139,92,246,0.3) 0%, transparent 70%)" }} />
+            <div style={{ position:"absolute", bottom:"-40px", left:"-40px", width:"240px", height:"240px", borderRadius:"50%", background:"radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 70%)" }} />
+          </div>
 
-        <div className="text-sm text-gray-500">
-          Next Reset: {timeLeft}
-        </div>
-
-        <div className="text-xl font-semibold">
-          Current Word: {currentWord}
-        </div>
-
-        <div className="text-sm bg-white rounded-xl p-3 ring-1 ring-gray-200">
-          <strong>R U L E S:</strong>
-          <div className="mt-4">Game play starts every Monday at 3 PM Central European Time.</div>
-          <div className="mt-4">Game play ends every Monday at 2:59 PM Central European Time.</div>
-          <div className="mt-4">During that time players can earn points by creating a new word from the current word.</div>
-          <div className="mt-4">Players can create new words from the current word in 1 of 4 ways : </div>
-          <div className="mt-4">Change two letters → 2 pts (alarm → alert)</div>
-          <div className="mt-4">Drop one letter → 3 pts (agent → gent)</div>
-          <div className="mt-4">Rearrange the letters → 5 pts (latent → talent)</div>
-          <div className="mt-4">Add 3 letters - CANNOT BE PREFIX or SUFFIX → 7 pts (tile → tensile)</div>
-          <div className="mt-4">Cannot use a word that has already been played during current game.</div>
-          <div className="mt-4">No player can play two words in a row. </div>
-        </div>
-
-        <div className="flex flex-wrap gap-6">
-          {scores.map((player, index) => {
-            const scale = 1 + player.points / 100;
-
-            const isLeader = index === 0;
-            const isActiveLeader = index === 0 && player.points > 0;
-
-            return (
-            <div
-              key={player.email}
-              className="flex flex-col items-center hover:scale-105 transition-transform"
+          <div className="relative space-y-4">
+            <h1
+              className={`${alfaSlab.className} text-6xl sm:text-8xl tracking-widest`}
+              style={{ color: "#fff", textShadow: "0 0 40px rgba(139,92,246,0.6), 0 4px 0 rgba(0,0,0,0.3)" }}
             >
-              <div className="text-xs font-bold text-gray-400">
-                #{index + 1}
-              </div>
+              WordSmith
+            </h1>
+            <Countdown />
+          </div>
+        </div>
 
-              {isActiveLeader && (
-                <div className="text-lg -mb-1 animate-[crown-pop_180ms_ease-out]">👑</div>
-              )}
+        <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
 
+          {/* ── Current word ── */}
+          <div
+            className="rounded-3xl p-8 text-center space-y-4 relative overflow-hidden"
+            style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 6px rgba(0,0,0,0.04), 0 20px 40px rgba(0,0,0,0.06)" }}
+          >
+            {/* Floating point notifications */}
+            {floaters.map((f) => (
               <div
+                key={f.id}
+                className="absolute pointer-events-none font-black text-2xl"
                 style={{
-                  transform: `scale(${scale})`,
-                  transition: "0.3s ease"
+                  left: `${f.x}%`,
+                  top: "20%",
+                  color: MOVES.find((m) => m.type === f.type)?.color ?? "#111",
+                  animation: "floatUp 1.5s ease-out forwards",
+                  textShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  zIndex: 10,
                 }}
-                className={`h-20 w-20 rounded-2xl overflow-hidden ring-2 transition-all
-                  ${isActiveLeader
-                    ? "ring-yellow-400 shadow-lg"
-                    : isLeader
-                    ? "ring-gray-300"
-                    : "ring-transparent"}
-                `}
               >
-                  <img
-                    src={getAvatarUrl(player.full_name)}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-
-                <div className="text-sm font-semibold">
-                  {getFirstName(player.full_name)}
-                </div>
-
-                <div className="text-xs text-gray-500">
-                  {player.points} pts
-                </div>
-
-                <div className="text-xs">
-                  {player.last_word}
-                </div>
-                <div className="text-xs text-gray-400 mt-1 space-y-0.5">
-                  {player.history?.map((word: string) => (
-                    <div key={word}>{word}</div>
-                  ))}
-                </div>
+                +{f.points}
               </div>
-            );
-          })}
+            ))}
+
+            <div className="text-xs font-bold uppercase tracking-widest text-gray-400">Current Word</div>
+
+            {currentWord ? (
+              <WordDisplay word={currentWord} big />
+            ) : (
+              <div className="h-16 bg-gray-100 rounded-xl animate-pulse" />
+            )}
+
+            {game?.last_player_email && (
+              <div className="text-xs text-gray-400">
+                Last played by{" "}
+                <span className="font-semibold text-gray-600">
+                  {firstName(scores.find((s) => s.email === game.last_player_email)?.full_name ?? game.last_player_email)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* ── Input ── */}
+          <div
+            className="rounded-3xl p-6 space-y-4"
+            style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 6px rgba(0,0,0,0.04), 0 20px 40px rgba(0,0,0,0.06)" }}
+          >
+            {!isMyTurn && (
+              <div
+                className="text-center text-sm font-semibold px-4 py-3 rounded-2xl"
+                style={{ background: "#fef3c7", color: "#92400e" }}
+              >
+                ⏳ You just played — wait for someone else to go before playing again.
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <input
+                value={nextWord}
+                onChange={(e) => { setNextWord(e.target.value); setError(null); }}
+                onKeyDown={(e) => e.key === "Enter" && submitMove()}
+                placeholder="Your word…"
+                disabled={!isMyTurn || submitting}
+                className="flex-1 rounded-2xl px-4 py-3 text-base font-semibold focus:outline-none transition"
+                style={{
+                  border: error ? "2px solid #ef4444" : preview?.valid ? `2px solid ${preview.color}` : "2px solid #e5e7eb",
+                  background: !isMyTurn ? "#f9fafb" : "#fff",
+                  color: "#111",
+                }}
+              />
+              <button
+                onClick={submitMove}
+                disabled={!isMyTurn || submitting || !nextWord}
+                className="px-6 py-3 rounded-2xl font-bold text-white transition hover:scale-105 active:scale-95"
+                style={{
+                  background: (!isMyTurn || !nextWord) ? "#d1d5db" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  cursor: (!isMyTurn || !nextWord) ? "default" : "pointer",
+                  boxShadow: (!isMyTurn || !nextWord) ? "none" : "0 4px 15px rgba(99,102,241,0.4)",
+                }}
+              >
+                {submitting ? "…" : "Play →"}
+              </button>
+            </div>
+
+            {/* Preview */}
+            {clean && !error && (
+              <div
+                className="flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-xl"
+                style={{
+                  background: preview?.valid ? (preview.color + "14") : "#fef2f2",
+                  color: preview?.valid ? preview.color : "#ef4444",
+                }}
+              >
+                {preview?.valid
+                  ? <><span>✓</span><span>{preview.label}</span><span className="ml-auto font-black">+{preview.points} pts</span></>
+                  : <><span>✗</span><span>Invalid move</span></>
+                }
+              </div>
+            )}
+
+            {error && (
+              <div className="text-sm font-medium text-red-500 px-1">{error}</div>
+            )}
+          </div>
+
+          {/* ── Leaderboard ── */}
+          <div
+            className="rounded-3xl overflow-hidden"
+            style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 6px rgba(0,0,0,0.04), 0 20px 40px rgba(0,0,0,0.06)" }}
+          >
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="font-bold text-gray-900">🏆 This Week's Standings</div>
+            </div>
+
+            {scores.length === 0 ? (
+              <div className="px-6 py-8 text-center text-sm text-gray-400">
+                No scores yet — be the first to play!
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {scores.map((player, i) => {
+                  const isMe = player.email === myEmail;
+                  const isLeader = i === 0 && player.points > 0;
+                  const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+
+                  return (
+                    <div
+                      key={player.email}
+                      className="flex items-center gap-4 px-6 py-4 transition"
+                      style={{ background: isMe ? "#f5f3ff" : "transparent" }}
+                    >
+                      {/* Rank */}
+                      <div className="w-8 text-center">
+                        {medal
+                          ? <span style={{ fontSize: 22 }}>{medal}</span>
+                          : <span className="text-sm font-bold text-gray-400">#{i + 1}</span>
+                        }
+                      </div>
+
+                      {/* Avatar */}
+                      <div
+                        className="rounded-2xl overflow-hidden shrink-0"
+                        style={{
+                          width: 48, height: 48,
+                          border: `3px solid ${isLeader ? "#f59e0b" : isMe ? "#8b5cf6" : "#e5e7eb"}`,
+                          boxShadow: isLeader ? "0 0 12px rgba(245,158,11,0.4)" : "none",
+                        }}
+                      >
+                        <img src={getAvatarUrl(player.full_name)} alt={player.full_name} className="w-full h-full object-cover" />
+                      </div>
+
+                      {/* Name + last word */}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm text-gray-900 flex items-center gap-1">
+                          {firstName(player.full_name)}
+                          {isMe && <span className="text-xs font-normal text-purple-500">(you)</span>}
+                          {isLeader && <span className="text-base">👑</span>}
+                        </div>
+                        {player.last_word && (
+                          <div className="text-xs text-gray-400 truncate">
+                            last: <span className="font-semibold text-gray-600">{player.last_word}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Points */}
+                      <div className="text-right shrink-0">
+                        <div
+                          className="text-lg font-black"
+                          style={{ color: isLeader ? "#f59e0b" : isMe ? "#8b5cf6" : "#111" }}
+                        >
+                          {player.points}
+                        </div>
+                        <div className="text-xs text-gray-400">pts</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── Played words this round ── */}
+          {game?.played_words && game.played_words.length > 1 && (
+            <div
+              className="rounded-3xl p-6 space-y-4"
+              style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 6px rgba(0,0,0,0.04), 0 20px 40px rgba(0,0,0,0.06)" }}
+            >
+              <div className="font-bold text-gray-900 text-sm">📝 Word Chain This Round</div>
+              <div className="flex flex-wrap gap-2">
+                {game.played_words.map((word, i) => (
+                  <div key={word} className="flex items-center gap-1">
+                    {i > 0 && <span className="text-gray-300 text-xs">→</span>}
+                    <span
+                      className="px-3 py-1 rounded-full text-xs font-bold"
+                      style={{
+                        background: word === currentWord ? "#1f2937" : "#f3f4f6",
+                        color: word === currentWord ? "#fff" : "#6b7280",
+                      }}
+                    >
+                      {word}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Hall of Fame ── */}
+          {winners.length > 0 && (
+            <div
+              className="rounded-3xl overflow-hidden"
+              style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 6px rgba(0,0,0,0.04), 0 20px 40px rgba(0,0,0,0.06)" }}
+            >
+              <div className="px-6 py-4 border-b border-gray-100">
+                <div className="font-bold text-gray-900">🏅 Hall of Fame</div>
+                <div className="text-xs text-gray-400 mt-0.5">Past weekly winners</div>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {winners.map((w) => (
+                  <div key={w.id} className="flex items-center gap-4 px-6 py-3">
+                    <div
+                      className="rounded-xl overflow-hidden shrink-0"
+                      style={{ width: 40, height: 40, border: "2px solid #fde68a" }}
+                    >
+                      <img src={getAvatarUrl(w.full_name)} alt={w.full_name} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-gray-900">{firstName(w.full_name)}</div>
+                      <div className="text-xs text-gray-400">
+                        Week of{" "}
+                        {new Date(w.week_start + "T12:00:00Z").toLocaleDateString("en-US", {
+                          month: "short", day: "numeric", year: "numeric",
+                        })}
+                        {w.winning_word && <> · last word: <span className="font-semibold text-gray-600">{w.winning_word}</span></>}
+                      </div>
+                    </div>
+                    <div className="text-sm font-black text-amber-500">{w.points} pts</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Rules ── */}
+          <RulesCard />
+
         </div>
-
-        <input
-          value={nextWord}
-          onChange={e => setNextWord(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === "Enter") submitMove();
-          }}
-          placeholder="Enter word"
-          className="border rounded-lg px-3 py-2"
-        />
-
-        <button onClick={submitMove} className="pill pill-active">
-          Submit
-        </button>
-
-        <div className="text-sm">
-          {preview?.valid
-            ? `VALID (${preview.type} → ${preview.points} pts)`
-            : nextWord
-            ? "INVALID"
-            : "-"}
-        </div>
-
-        {/*    
-        <button onClick={resetGame} className="text-xs underline">
-          Reset Game
-        </button>
-        */}
       </div>
+
+      <style>{`
+        @keyframes tileIn {
+          from { opacity: 0; transform: translateY(-12px) scale(0.8); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes floatUp {
+          0%   { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-80px) scale(1.3); }
+        }
+      `}</style>
     </AuthGuard>
   );
 }
