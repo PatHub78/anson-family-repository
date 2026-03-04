@@ -234,7 +234,7 @@ function CreateChallengeModal({
     // Trigger email notification via Edge Function
     if (newChallenge) {
       try {
-        await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/notify-challenge`, {
+        await fetch(`/api/notify-challenge`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
