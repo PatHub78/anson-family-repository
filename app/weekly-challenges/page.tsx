@@ -196,7 +196,7 @@ function CreateChallengeModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const others = profiles.filter((p) => p.id !== currentUser.id);
+  const others = profiles.filter((p) => p.email !== currentUser.email);
 
   const handleSubmit = async () => {
     if (!challengeText.trim()) { setError("Please describe the challenge."); return; }
