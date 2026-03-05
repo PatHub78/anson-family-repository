@@ -291,9 +291,9 @@ export default function DashboardPage() {
     return map;
   }, [previousRows]);
 
-  const sorted = useMemo(() => {
-    return [...aggregated].sort((a, b) => b[metric] - a[metric]);
-  }, [aggregated, metric]);
+const sorted = useMemo(() => {
+  return [...aggregated].sort((a, b) => (b[metric] as number) - (a[metric] as number));
+}, [aggregated, metric]);
 
   // Per-person freshness & submission count
   const personMeta = useMemo(() => {
@@ -366,7 +366,7 @@ export default function DashboardPage() {
 
     aggregated.forEach(({ id, ...vals }) => {
       const curr = vals[metric] as number;
-      const prev = prevAggregated.get(id)?.[metric] ?? 0;
+      const prev = (prevAggregated.get(id)?.[metric] ?? 0) as number;
       if (prev === 0) return;
       const pct = ((curr - prev) / prev) * 100;
       if (pct > best.pct) best = { name: id, pct };
@@ -504,7 +504,7 @@ export default function DashboardPage() {
                         {getFirstName(p.id)}
                       </div>
                       <div className="text-xs" style={{ color: "#9ca3af" }}>
-                        {formatNumber(p[metric])} {unit}
+                        {formatNumber(p[metric] as number)} {unit}
                       </div>
                       {/* Trend badge */}
                       <div className="mt-1 flex justify-center">
@@ -572,7 +572,7 @@ export default function DashboardPage() {
                   <LabelList
                     dataKey={metric}
                     position="right"
-                    formatter={(v: number) => formatNumber(v)}
+                    formatter={(v: unknown) => formatNumber(v as number)}
                     style={{ fontSize: 12, fontWeight: 700, fill: "#374151" }}
                   />
                 </Bar>
