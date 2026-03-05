@@ -32,6 +32,14 @@ interface Submission {
 type Metric = "steps" | "exerciseMinutes" | "pagesRead" | "biking";
 type TimeFilter = "7d" | "30d" | "allTime";
 
+interface AggregatedPerson {
+  id: string;
+  steps: number;
+  exerciseMinutes: number;
+  pagesRead: number;
+  biking: number;
+}
+
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
@@ -273,7 +281,7 @@ export default function DashboardPage() {
       c.biking += Number(row.distance_biked ?? 0);
     });
 
-    return Array.from(map.entries()).map(([id, vals]) => ({ id, ...vals }));
+    return Array.from(map.entries()).map(([id, vals]) => ({ id, ...vals })) as AggregatedPerson[];
   }, [filteredRows]);
 
   // Aggregate previous period
@@ -291,9 +299,9 @@ export default function DashboardPage() {
     return map;
   }, [previousRows]);
 
-const sorted = useMemo(() => {
-  return [...aggregated].sort((a, b) => (b[metric] as number) - (a[metric] as number));
-}, [aggregated, metric]);
+  const sorted = useMemo(() => {
+    return [...aggregated].sort((a, b) => b[metric] - a[metric]);
+  }, [aggregated, metric]);
 
   // Per-person freshness & submission count
   const personMeta = useMemo(() => {
@@ -366,7 +374,7 @@ const sorted = useMemo(() => {
 
     aggregated.forEach(({ id, ...vals }) => {
       const curr = vals[metric] as number;
-      const prev = (prevAggregated.get(id)?.[metric] ?? 0) as number;
+      const prev = prevAggregated.get(id)?.[metric] ?? 0;
       if (prev === 0) return;
       const pct = ((curr - prev) / prev) * 100;
       if (pct > best.pct) best = { name: id, pct };
@@ -504,7 +512,7 @@ const sorted = useMemo(() => {
                         {getFirstName(p.id)}
                       </div>
                       <div className="text-xs" style={{ color: "#9ca3af" }}>
-                        {formatNumber(p[metric] as number)} {unit}
+                        {formatNumber(p[metric])} {unit}
                       </div>
                       {/* Trend badge */}
                       <div className="mt-1 flex justify-center">
