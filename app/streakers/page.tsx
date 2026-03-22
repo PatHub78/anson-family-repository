@@ -355,7 +355,7 @@ function StreakCard({
               cursor: busy ? "wait" : "pointer",
             }}
           >
-            {busy ? "Joining..." : "&#x2295; Join this streak"}
+            {busy ? "Joining..." : "⊕ Join this streak"}
           </button>
         )}
       </div>
