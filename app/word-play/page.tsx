@@ -316,7 +316,7 @@ export default function WordSmithPage() {
         supabase.from("wordsmith_game").select("*").single(),
         supabase.from("wordsmith_scores").select("*").order("points", { ascending: false }),
         supabase.from("wordsmith_winners").select("*").order("week_start", { ascending: false }).limit(10),
-        supabase.from("active_profiles").select("email, full_name"),
+        supabase.from("profiles").select("email, full_name"),
       ]);
 
     if (gameData) setGame(gameData);
