@@ -9,13 +9,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// ─── Put your TMDB API key in .env.local as NEXT_PUBLIC_TMDB_KEY ───
-// Get one free at: https://www.themoviedb.org/settings/api
 const TMDB_KEY = process.env.NEXT_PUBLIC_TMDB_KEY ?? "";
 
-// ────────────────────────────────────────────────────────────────────
-// Types
-// ────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Recommendation {
   id: number;
@@ -24,9 +20,10 @@ interface Recommendation {
   title: string | null;
   creator: string | null;
   image_url: string;
+  youtube_url: string | null;
   created_at?: string;
-  likes: number;       // flattened from recommendation_likes
-  liked_by_me: boolean; // optimistic like state
+  likes: number;
+  liked_by_me: boolean;
 }
 
 interface SearchResult {
@@ -35,13 +32,11 @@ interface SearchResult {
   image_url: string;
 }
 
-type MediaType = "book" | "movie" | "song";
+type MediaType = "book" | "movie" | "song" | "video";
 type SortMode = "new" | "popular";
 type WizardStep = "type" | "search" | "confirm";
 
-// ────────────────────────────────────────────────────────────────────
-// Helpers
-// ────────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getAvatarUrl(name?: string | null) {
   if (!name) return "/default-avatar.jpg";
@@ -54,15 +49,36 @@ function firstName(name?: string | null) {
   return name.split(" ")[0];
 }
 
+/** Extract YouTube video ID from any YouTube URL format */
+function extractYouTubeId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/watch\?.*&v=([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+function getYouTubeThumbnail(videoId: string) {
+  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+}
+
+function getSongYouTubeUrl(title: string, creator: string) {
+  const query = encodeURIComponent(`${title} ${creator}`);
+  return `https://www.youtube.com/results?search_query=${query}`;
+}
+
 const TYPE_CONFIG: Record<MediaType, { label: string; emoji: string; color: string; bg: string }> = {
   book:  { label: "Book",  emoji: "📖", color: "#92400e", bg: "#fef3c7" },
   movie: { label: "Movie", emoji: "🎞️", color: "#1e3a8a", bg: "#dbeafe" },
   song:  { label: "Song",  emoji: "🎵", color: "#065f46", bg: "#d1fae5" },
+  video: { label: "Video", emoji: "▶️", color: "#7f1d1d", bg: "#fee2e2" },
 };
 
-// ────────────────────────────────────────────────────────────────────
-// API Search Functions
-// ────────────────────────────────────────────────────────────────────
+// ─── API Search ───────────────────────────────────────────────────────────────
 
 async function searchBooks(query: string): Promise<SearchResult[]> {
   if (!query.trim()) return [];
@@ -118,15 +134,7 @@ async function searchSongs(query: string): Promise<SearchResult[]> {
   return results;
 }
 
-async function searchMedia(type: MediaType, query: string): Promise<SearchResult[]> {
-  if (type === "book")  return searchBooks(query);
-  if (type === "movie") return searchMovies(query);
-  return searchSongs(query);
-}
-
-// ────────────────────────────────────────────────────────────────────
-// Sub-components
-// ────────────────────────────────────────────────────────────────────
+// ─── Type Badge ───────────────────────────────────────────────────────────────
 
 function TypeBadge({ type }: { type: string }) {
   const cfg = TYPE_CONFIG[type as MediaType] ?? { emoji: "?", color: "#666", bg: "#eee" };
@@ -140,24 +148,14 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-function HeartButton({
-  liked,
-  count,
-  onClick,
-}: {
-  liked: boolean;
-  count: number;
-  onClick: () => void;
-}) {
+// ─── Heart Button ─────────────────────────────────────────────────────────────
+
+function HeartButton({ liked, count, onClick }: { liked: boolean; count: number; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       className="flex items-center gap-1 text-xs transition-all duration-150 select-none"
-      style={{
-        color: liked ? "#e11d48" : "#9ca3af",
-        fontWeight: liked ? 700 : 400,
-        transform: liked ? "scale(1.1)" : "scale(1)",
-      }}
+      style={{ color: liked ? "#e11d48" : "#9ca3af", fontWeight: liked ? 700 : 400, transform: liked ? "scale(1.1)" : "scale(1)" }}
       aria-label={liked ? "Unlike" : "Like"}
     >
       <span style={{ fontSize: "15px" }}>{liked ? "❤️" : "🤍"}</span>
@@ -166,21 +164,28 @@ function HeartButton({
   );
 }
 
-function RecommendationCard({
-  rec,
-  onLike,
-}: {
-  rec: Recommendation;
-  onLike: (id: number) => void;
-}) {
-  const cfg = TYPE_CONFIG[rec.type as MediaType] ?? { bg: "#f3f4f6", color: "#111" };
+// ─── Recommendation Card ──────────────────────────────────────────────────────
 
-  return (
+function RecommendationCard({ rec, onLike }: { rec: Recommendation; onLike: (id: number) => void }) {
+  const isVideo = rec.type === "video";
+  const isSong = rec.type === "song";
+
+  // For songs: clicking opens YouTube search
+  const songYouTubeUrl = isSong && rec.title
+    ? getSongYouTubeUrl(rec.title, rec.creator ?? "")
+    : null;
+
+  // For videos: clicking opens YouTube directly
+  const videoUrl = isVideo && rec.youtube_url ? rec.youtube_url : null;
+
+  const clickUrl = videoUrl || songYouTubeUrl;
+
+  const cardContent = (
     <div
       className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 flex flex-col"
-      style={{ border: "1px solid #f0f0f0" }}
+      style={{ border: "1px solid #f0f0f0", cursor: clickUrl ? "pointer" : "default" }}
     >
-      {/* Cover art */}
+      {/* Cover / thumbnail */}
       <div className="relative aspect-square overflow-hidden bg-gray-100">
         <img
           src={rec.image_url}
@@ -193,6 +198,34 @@ function RecommendationCard({
           }}
         />
         <TypeBadge type={rec.type} />
+
+        {/* Play button overlay for videos */}
+        {isVideo && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(2px)" }}
+            >
+              <svg viewBox="0 0 24 24" fill="white" width="22" height="22">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          </div>
+        )}
+
+        {/* YouTube icon for songs */}
+        {isSong && (
+          <div className="absolute bottom-2 right-2">
+            <div
+              className="w-6 h-6 rounded flex items-center justify-center"
+              style={{ background: "#ff0000" }}
+            >
+              <svg viewBox="0 0 24 24" fill="white" width="12" height="12">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Info */}
@@ -203,9 +236,7 @@ function RecommendationCard({
           </div>
         )}
         {rec.creator && (
-          <div className="text-xs text-gray-400 leading-tight line-clamp-1">
-            {rec.creator}
-          </div>
+          <div className="text-xs text-gray-400 leading-tight line-clamp-1">{rec.creator}</div>
         )}
 
         {/* Footer */}
@@ -221,17 +252,25 @@ function RecommendationCard({
           <HeartButton
             liked={rec.liked_by_me}
             count={rec.likes}
-            onClick={() => onLike(rec.id)}
+            onClick={(e?: any) => { if (e) e.stopPropagation(); onLike(rec.id); }}
           />
         </div>
       </div>
     </div>
   );
+
+  if (clickUrl) {
+    return (
+      <a href={clickUrl} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none" }}>
+        {cardContent}
+      </a>
+    );
+  }
+
+  return cardContent;
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Add Recommendation Wizard
-// ────────────────────────────────────────────────────────────────────
+// ─── Add Recommendation Wizard ────────────────────────────────────────────────
 
 function AddWizard({
   onClose,
@@ -252,31 +291,62 @@ function AddWizard({
   const [selected, setSelected] = useState<SearchResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [noKey, setNoKey] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeError, setYoutubeError] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Warn if TMDB key missing when movie selected
   useEffect(() => {
     setNoKey(mediaType === "movie" && !TMDB_KEY);
   }, [mediaType]);
 
-  // Debounced search
   useEffect(() => {
-    if (step !== "search") return;
+    if (step !== "search" || mediaType === "video") return;
     if (!query.trim()) { setResults([]); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
-      const res = await searchMedia(mediaType, query);
+      let res: SearchResult[] = [];
+      if (mediaType === "book") res = await searchBooks(query);
+      else if (mediaType === "movie") res = await searchMovies(query);
+      else if (mediaType === "song") res = await searchSongs(query);
       setResults(res);
       setSearching(false);
     }, 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, mediaType, step]);
 
+  const handleTypeSelect = (type: MediaType) => {
+    setMediaType(type);
+    setQuery("");
+    setResults([]);
+    setYoutubeUrl("");
+    setYoutubeError("");
+    setStep("search");
+  };
+
   const handleSelect = (result: SearchResult) => {
     setSelected(result);
     setStep("confirm");
   };
+
+  // Handle YouTube URL submission
+  const handleYouTubeSubmit = () => {
+    const videoId = extractYouTubeId(youtubeUrl.trim());
+    if (!videoId) {
+      setYoutubeError("Couldn't find a valid YouTube video ID in that URL. Try copying the URL directly from YouTube.");
+      return;
+    }
+    setYoutubeError("");
+    const thumbnailUrl = getYouTubeThumbnail(videoId);
+    setSelected({
+      title: "", // user will see a title input in confirm step
+      creator: "",
+      image_url: thumbnailUrl,
+    });
+    setStep("confirm");
+  };
+
+  const [customTitle, setCustomTitle] = useState("");
 
   const handleSave = async () => {
     if (!selected) return;
@@ -289,17 +359,20 @@ function AddWizard({
       .single();
 
     const fullName = profile?.full_name ?? currentUserName;
-
     const { data: userData } = await supabase.auth.getUser();
     const email = userData.user?.email ?? "";
+
+    const videoId = mediaType === "video" ? extractYouTubeId(youtubeUrl.trim()) : null;
+    const finalTitle = mediaType === "video" ? (customTitle.trim() || null) : selected.title;
 
     const { data, error } = await supabase
       .from("recommendations")
       .insert({
         type: mediaType,
-        title: selected.title,
+        title: finalTitle,
         creator: selected.creator || null,
         image_url: selected.image_url,
+        youtube_url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : null,
         approved: true,
         full_name: fullName,
         email,
@@ -315,11 +388,7 @@ function AddWizard({
       return;
     }
 
-    onSaved({
-      ...data,
-      likes: 0,
-      liked_by_me: false,
-    });
+    onSaved({ ...data, likes: 0, liked_by_me: false });
     onClose();
   };
 
@@ -339,20 +408,16 @@ function AddWizard({
           <div>
             <div className="text-lg font-bold text-gray-900">
               {step === "type"    && "What are you sharing?"}
-              {step === "search"  && `Search for a ${TYPE_CONFIG[mediaType].label}`}
+              {step === "search"  && mediaType === "video" && "Paste a YouTube link"}
+              {step === "search"  && mediaType !== "video" && `Search for a ${TYPE_CONFIG[mediaType].label}`}
               {step === "confirm" && "Looks good?"}
             </div>
-            {/* Step dots */}
             <div className="flex gap-1.5 mt-2">
-              {(["type", "search", "confirm"] as WizardStep[]).map((s, i) => (
+              {(["type", "search", "confirm"] as WizardStep[]).map((s) => (
                 <div
                   key={s}
                   className="rounded-full transition-all"
-                  style={{
-                    width: step === s ? 20 : 6,
-                    height: 6,
-                    background: step === s ? "#111" : "#d1d5db",
-                  }}
+                  style={{ width: step === s ? 20 : 6, height: 6, background: step === s ? "#111" : "#d1d5db" }}
                 />
               ))}
             </div>
@@ -361,7 +426,7 @@ function AddWizard({
             onClick={onClose}
             className="text-gray-400 hover:text-gray-700 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
           >
-            ×
+            &#x2715;
           </button>
         </div>
 
@@ -370,47 +435,29 @@ function AddWizard({
 
           {/* STEP 1 — Type */}
           {step === "type" && (
-            <div className="grid grid-cols-3 gap-3 pt-2">
-              {(Object.entries(TYPE_CONFIG) as [MediaType, typeof TYPE_CONFIG[MediaType]][]).map(
-                ([type, cfg]) => (
-                  <button
-                    key={type}
-                    onClick={() => { setMediaType(type); setQuery(""); setResults([]); setStep("search"); }}
-                    className="flex flex-col items-center gap-3 py-8 rounded-2xl border-2 transition-all hover:scale-105"
-                    style={{
-                      borderColor: cfg.bg,
-                      background: cfg.bg,
-                    }}
-                  >
-                    <span style={{ fontSize: 40 }}>{cfg.emoji}</span>
-                    <span className="text-sm font-semibold" style={{ color: cfg.color }}>
-                      {cfg.label}
-                    </span>
-                  </button>
-                )
-              )}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              {(Object.entries(TYPE_CONFIG) as [MediaType, typeof TYPE_CONFIG[MediaType]][]).map(([type, cfg]) => (
+                <button
+                  key={type}
+                  onClick={() => handleTypeSelect(type)}
+                  className="flex flex-col items-center gap-3 py-8 rounded-2xl border-2 transition-all hover:scale-105"
+                  style={{ borderColor: cfg.bg, background: cfg.bg }}
+                >
+                  <span style={{ fontSize: 40 }}>{cfg.emoji}</span>
+                  <span className="text-sm font-semibold" style={{ color: cfg.color }}>{cfg.label}</span>
+                </button>
+              ))}
             </div>
           )}
 
-          {/* STEP 2 — Search */}
-          {step === "search" && (
+          {/* STEP 2 — Search (books, movies, songs) */}
+          {step === "search" && mediaType !== "video" && (
             <div className="space-y-4 pt-2">
               {noKey && (
                 <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3">
-                  ⚠️ <strong>TMDB API key missing.</strong> Add <code>NEXT_PUBLIC_TMDB_KEY</code> to your{" "}
-                  <code>.env.local</code> file. Get a free key at{" "}
-                  <a
-                    href="https://www.themoviedb.org/settings/api"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                  >
-                    themoviedb.org
-                  </a>
-                  .
+                  ⚠️ <strong>TMDB API key missing.</strong> Add <code>NEXT_PUBLIC_TMDB_KEY</code> to your <code>.env.local</code> file.
                 </div>
               )}
-
               <div className="relative">
                 <input
                   autoFocus
@@ -436,15 +483,9 @@ function AddWizard({
                       className="group relative rounded-xl overflow-hidden aspect-square bg-gray-100 hover:ring-2 hover:ring-gray-900 transition-all"
                       title={`${r.title} — ${r.creator}`}
                     >
-                      <img
-                        src={r.image_url}
-                        alt={r.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                      />
+                      <img src={r.image_url} alt={r.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
-                        <div className="text-white text-[10px] font-semibold leading-tight line-clamp-2">
-                          {r.title}
-                        </div>
+                        <div className="text-white text-[10px] font-semibold leading-tight line-clamp-2">{r.title}</div>
                         <div className="text-white/70 text-[9px] line-clamp-1">{r.creator}</div>
                       </div>
                     </button>
@@ -453,17 +494,68 @@ function AddWizard({
               )}
 
               {query.trim() && !searching && results.length === 0 && (
-                <div className="text-center text-sm text-gray-400 py-6">
-                  No results found. Try a different search.
+                <div className="text-center text-sm text-gray-400 py-6">No results found. Try a different search.</div>
+              )}
+
+              <button onClick={() => setStep("type")} className="text-sm text-gray-400 hover:text-gray-700 transition">
+                ← Back
+              </button>
+            </div>
+          )}
+
+          {/* STEP 2 — YouTube URL input */}
+          {step === "search" && mediaType === "video" && (
+            <div className="space-y-4 pt-2">
+              <div
+                className="rounded-xl p-4 text-sm text-red-700 space-y-1"
+                style={{ background: "#fee2e2", border: "1px solid #fca5a5" }}
+              >
+                <div className="font-bold flex items-center gap-2">
+                  <span style={{ fontSize: 18 }}>▶️</span> Paste a YouTube link
+                </div>
+                <div className="text-xs text-red-500">
+                  Works with youtube.com/watch, youtu.be, and Shorts links
+                </div>
+              </div>
+
+              <input
+                autoFocus
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={youtubeUrl}
+                onChange={(e) => { setYoutubeUrl(e.target.value); setYoutubeError(""); }}
+                onKeyDown={(e) => e.key === "Enter" && handleYouTubeSubmit()}
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-red-400 transition"
+              />
+
+              {youtubeError && (
+                <div className="text-xs text-red-500 font-medium">{youtubeError}</div>
+              )}
+
+              {/* Live preview of thumbnail */}
+              {youtubeUrl && extractYouTubeId(youtubeUrl) && (
+                <div className="rounded-xl overflow-hidden aspect-video bg-gray-100">
+                  <img
+                    src={getYouTubeThumbnail(extractYouTubeId(youtubeUrl)!)}
+                    alt="Video thumbnail"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               )}
 
-              <button
-                onClick={() => setStep("type")}
-                className="text-sm text-gray-400 hover:text-gray-700 transition"
-              >
-                ← Back
-              </button>
+              <div className="flex gap-3">
+                <button onClick={() => setStep("type")} className="flex-1 py-3 rounded-xl border-2 border-gray-200 text-sm font-semibold text-gray-600 hover:border-gray-400 transition">
+                  ← Back
+                </button>
+                <button
+                  onClick={handleYouTubeSubmit}
+                  disabled={!youtubeUrl.trim()}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition"
+                  style={{ background: youtubeUrl.trim() ? "#ff0000" : "#d1d5db", cursor: youtubeUrl.trim() ? "pointer" : "default" }}
+                >
+                  Next →
+                </button>
+              </div>
             </div>
           )}
 
@@ -473,23 +565,38 @@ function AddWizard({
               <div className="flex gap-4 items-start">
                 <img
                   src={selected.image_url}
-                  alt={selected.title}
+                  alt={selected.title || "thumbnail"}
                   className="w-24 h-24 object-cover rounded-xl shadow"
                 />
-                <div className="flex-1 pt-1 space-y-1">
-                  <div className="font-semibold text-gray-900 leading-tight">
-                    {selected.title}
-                  </div>
-                  <div className="text-sm text-gray-500">{selected.creator}</div>
+                <div className="flex-1 pt-1 space-y-2">
+                  {/* Video title input */}
+                  {mediaType === "video" ? (
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Give this video a title… (optional)"
+                      value={customTitle}
+                      onChange={(e) => setCustomTitle(e.target.value)}
+                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-gray-900 transition"
+                    />
+                  ) : (
+                    <>
+                      <div className="font-semibold text-gray-900 leading-tight">{selected.title}</div>
+                      <div className="text-sm text-gray-500">{selected.creator}</div>
+                    </>
+                  )}
                   <div
-                    className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium mt-1"
-                    style={{
-                      background: TYPE_CONFIG[mediaType].bg,
-                      color: TYPE_CONFIG[mediaType].color,
-                    }}
+                    className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: TYPE_CONFIG[mediaType].bg, color: TYPE_CONFIG[mediaType].color }}
                   >
                     {TYPE_CONFIG[mediaType].emoji} {TYPE_CONFIG[mediaType].label}
                   </div>
+                  {mediaType === "song" && selected.title && (
+                    <div className="text-xs text-gray-400 flex items-center gap-1">
+                      <span style={{ color: "#ff0000" }}>▶</span>
+                      Card will link to YouTube search
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -507,7 +614,7 @@ function AddWizard({
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex-2 flex-1 py-3 rounded-xl text-sm font-bold text-white transition"
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition"
                   style={{ background: saving ? "#9ca3af" : "#111", cursor: saving ? "wait" : "pointer" }}
                 >
                   {saving ? "Saving…" : "Share it! 🎉"}
@@ -521,9 +628,7 @@ function AddWizard({
   );
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Main Page
-// ────────────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function RecommendationsPage() {
   const [rows, setRows] = useState<Recommendation[]>([]);
@@ -535,37 +640,23 @@ export default function RecommendationsPage() {
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
   const [likedIds, setLikedIds] = useState<Set<number>>(new Set());
 
-  // Load current user + their likes
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("email", user.email)
-        .single();
-
+      const { data: profile } = await supabase.from("profiles").select("full_name").eq("email", user.email).single();
       setCurrentUser({ id: user.id, name: profile?.full_name ?? "" });
-
-      // Load this user's likes
-      const { data: myLikes } = await supabase
-        .from("recommendation_likes")
-        .select("recommendation_id")
-        .eq("user_id", user.id);
-
+      const { data: myLikes } = await supabase.from("recommendation_likes").select("recommendation_id").eq("user_id", user.id);
       setLikedIds(new Set((myLikes ?? []).map((l: any) => l.recommendation_id)));
     };
     init();
   }, []);
 
-  // Load recommendations
   const loadRecommendations = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("recommendations")
-      .select(`id, full_name, type, title, creator, image_url, created_at, recommendation_likes(count)`)
+      .select(`id, full_name, type, title, creator, image_url, youtube_url, created_at, recommendation_likes(count)`)
       .eq("approved", true)
       .order("created_at", { ascending: false });
 
@@ -580,48 +671,21 @@ export default function RecommendationsPage() {
     setLoading(false);
   }, [likedIds]);
 
-  useEffect(() => {
-    loadRecommendations();
-  }, [loadRecommendations]);
+  useEffect(() => { loadRecommendations(); }, [loadRecommendations]);
 
-  // Optimistic like toggle
   const handleLike = async (recId: number) => {
     if (!currentUser) return;
-
     const alreadyLiked = likedIds.has(recId);
-
-    // Optimistic update
-    setLikedIds((prev) => {
-      const next = new Set(prev);
-      alreadyLiked ? next.delete(recId) : next.add(recId);
-      return next;
-    });
-
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === recId
-          ? { ...r, liked_by_me: !alreadyLiked, likes: r.likes + (alreadyLiked ? -1 : 1) }
-          : r
-      )
-    );
-
-    // Sync with DB
+    setLikedIds((prev) => { const next = new Set(prev); alreadyLiked ? next.delete(recId) : next.add(recId); return next; });
+    setRows((prev) => prev.map((r) => r.id === recId ? { ...r, liked_by_me: !alreadyLiked, likes: r.likes + (alreadyLiked ? -1 : 1) } : r));
     if (alreadyLiked) {
-      await supabase
-        .from("recommendation_likes")
-        .delete()
-        .eq("user_id", currentUser.id)
-        .eq("recommendation_id", recId);
+      await supabase.from("recommendation_likes").delete().eq("user_id", currentUser.id).eq("recommendation_id", recId);
     } else {
-      await supabase
-        .from("recommendation_likes")
-        .insert({ user_id: currentUser.id, recommendation_id: recId });
+      await supabase.from("recommendation_likes").insert({ user_id: currentUser.id, recommendation_id: recId });
     }
   };
 
-  const handleSaved = (rec: Recommendation) => {
-    setRows((prev) => [rec, ...prev]);
-  };
+  const handleSaved = (rec: Recommendation) => setRows((prev) => [rec, ...prev]);
 
   const users = useMemo(() => Array.from(new Set(rows.map((r) => r.full_name))), [rows]);
 
@@ -631,17 +695,15 @@ export default function RecommendationsPage() {
       if (selectedUser !== "all" && r.full_name !== selectedUser) return false;
       return true;
     });
-    if (sortMode === "popular") {
-      result = [...result].sort((a, b) => b.likes - a.likes);
-    }
+    if (sortMode === "popular") result = [...result].sort((a, b) => b.likes - a.likes);
     return result;
   }, [rows, selectedType, selectedUser, sortMode]);
 
-  // Stats for the header
   const stats = useMemo(() => ({
     books:  rows.filter((r) => r.type === "book").length,
     movies: rows.filter((r) => r.type === "movie").length,
     songs:  rows.filter((r) => r.type === "song").length,
+    videos: rows.filter((r) => r.type === "video").length,
     total:  rows.length,
   }), [rows]);
 
@@ -658,18 +720,16 @@ export default function RecommendationsPage() {
 
       <div className="max-w-6xl mx-auto py-12 px-4 space-y-10">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="text-center space-y-2">
-          <h1 className="text-5xl font-bold tracking-tight" style={{ color: "#111" }}>
-            Recommendations
-          </h1>
+          <h1 className="text-5xl font-bold tracking-tight" style={{ color: "#111" }}>Recommendations</h1>
           <p className="text-gray-400 text-sm">
             {stats.total} picks from the family
-            {stats.total > 0 && ` · ${stats.books} books · ${stats.movies} movies · ${stats.songs} songs`}
+            {stats.total > 0 && ` · ${stats.books} books · ${stats.movies} movies · ${stats.songs} songs · ${stats.videos} videos`}
           </p>
         </div>
 
-        {/* ── Add button ── */}
+        {/* Add button */}
         <div className="flex justify-center">
           <button
             onClick={() => setShowWizard(true)}
@@ -680,104 +740,55 @@ export default function RecommendationsPage() {
           </button>
         </div>
 
-        {/* ── Sort + Type filter ── */}
+        {/* Sort + Type filter */}
         <div className="flex flex-wrap justify-center gap-3">
-          {/* Sort */}
-          <div
-            className="flex rounded-full p-1"
-            style={{ background: "#f3f4f6" }}
-          >
+          <div className="flex rounded-full p-1" style={{ background: "#f3f4f6" }}>
             {(["new", "popular"] as SortMode[]).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setSortMode(mode)}
+              <button key={mode} onClick={() => setSortMode(mode)}
                 className="px-4 py-1.5 rounded-full text-sm font-semibold transition-all"
-                style={{
-                  background: sortMode === mode ? "#111" : "transparent",
-                  color: sortMode === mode ? "#fff" : "#6b7280",
-                }}
-              >
+                style={{ background: sortMode === mode ? "#111" : "transparent", color: sortMode === mode ? "#fff" : "#6b7280" }}>
                 {mode === "new" ? "✨ New" : "❤️ Most Loved"}
               </button>
             ))}
           </div>
-
-          {/* Type filter */}
-          <div
-            className="flex rounded-full p-1"
-            style={{ background: "#f3f4f6" }}
-          >
-            <button
-              onClick={() => setSelectedType("all")}
+          <div className="flex rounded-full p-1" style={{ background: "#f3f4f6" }}>
+            <button onClick={() => setSelectedType("all")}
               className="px-4 py-1.5 rounded-full text-sm font-semibold transition-all"
-              style={{
-                background: selectedType === "all" ? "#111" : "transparent",
-                color: selectedType === "all" ? "#fff" : "#6b7280",
-              }}
-            >
+              style={{ background: selectedType === "all" ? "#111" : "transparent", color: selectedType === "all" ? "#fff" : "#6b7280" }}>
               All
             </button>
-            {(Object.entries(TYPE_CONFIG) as [MediaType, typeof TYPE_CONFIG[MediaType]][]).map(
-              ([type, cfg]) => (
-                <button
-                  key={type}
-                  onClick={() => setSelectedType(type)}
-                  className="px-4 py-1.5 rounded-full text-sm font-semibold transition-all"
-                  style={{
-                    background: selectedType === type ? "#111" : "transparent",
-                    color: selectedType === type ? "#fff" : "#6b7280",
-                  }}
-                >
-                  {cfg.emoji} {cfg.label}s
-                </button>
-              )
-            )}
+            {(Object.entries(TYPE_CONFIG) as [MediaType, typeof TYPE_CONFIG[MediaType]][]).map(([type, cfg]) => (
+              <button key={type} onClick={() => setSelectedType(type)}
+                className="px-4 py-1.5 rounded-full text-sm font-semibold transition-all"
+                style={{ background: selectedType === type ? "#111" : "transparent", color: selectedType === type ? "#fff" : "#6b7280" }}>
+                {cfg.emoji} {cfg.label}s
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* ── User filter ── */}
+        {/* User filter */}
         <div className="flex flex-wrap justify-center gap-3 items-center">
-          <button
-            onClick={() => setSelectedUser("all")}
+          <button onClick={() => setSelectedUser("all")}
             className="px-4 py-1.5 rounded-full text-sm font-semibold transition-all border-2"
-            style={{
-              borderColor: selectedUser === "all" ? "#111" : "#e5e7eb",
-              background: selectedUser === "all" ? "#111" : "white",
-              color: selectedUser === "all" ? "#fff" : "#374151",
-            }}
-          >
+            style={{ borderColor: selectedUser === "all" ? "#111" : "#e5e7eb", background: selectedUser === "all" ? "#111" : "white", color: selectedUser === "all" ? "#fff" : "#374151" }}>
             Everyone
           </button>
           {users.map((user) => (
-            <button
-              key={user}
-              onClick={() => setSelectedUser(user)}
+            <button key={user} onClick={() => setSelectedUser(user)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold transition-all border-2"
-              style={{
-                borderColor: selectedUser === user ? "#111" : "#e5e7eb",
-                background: selectedUser === user ? "#111" : "white",
-                color: selectedUser === user ? "#fff" : "#374151",
-              }}
-            >
-              <img
-                src={getAvatarUrl(user)}
-                alt={user}
-                className="w-5 h-5 rounded-full object-cover"
-              />
+              style={{ borderColor: selectedUser === user ? "#111" : "#e5e7eb", background: selectedUser === user ? "#111" : "white", color: selectedUser === user ? "#fff" : "#374151" }}>
+              <img src={getAvatarUrl(user)} alt={user} className="w-5 h-5 rounded-full object-cover" />
               {firstName(user)}
             </button>
           ))}
         </div>
 
-        {/* ── Grid ── */}
+        {/* Grid */}
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {Array.from({ length: 12 }).map((_, i) => (
-              <div
-                key={i}
-                className="rounded-2xl bg-gray-100 animate-pulse"
-                style={{ aspectRatio: "1 / 1.4" }}
-              />
+              <div key={i} className="rounded-2xl bg-gray-100 animate-pulse" style={{ aspectRatio: "1 / 1.4" }} />
             ))}
           </div>
         ) : filtered.length === 0 ? (
@@ -789,13 +800,7 @@ export default function RecommendationsPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {filtered.map((rec, i) => (
-              <div
-                key={rec.id}
-                style={{
-                  animation: "fadeUp 0.3s ease both",
-                  animationDelay: `${Math.min(i, 18) * 35}ms`,
-                }}
-              >
+              <div key={rec.id} style={{ animation: "fadeUp 0.3s ease both", animationDelay: `${Math.min(i, 18) * 35}ms` }}>
                 <RecommendationCard rec={rec} onLike={handleLike} />
               </div>
             ))}
