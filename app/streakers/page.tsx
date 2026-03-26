@@ -93,7 +93,7 @@ function MilestoneBanner({ milestones }: { milestones: Milestone[] }) {
         &#x2715;
       </button>
       <div className="flex items-start gap-3">
-        <div style={{ fontSize: 28 }}>&#127987;</div>
+        <div style={{ fontSize: 28 }}>🏴</div>
         <div>
           <div className="font-black text-amber-900 text-sm mb-1.5">Streak Milestones!</div>
           <div className="space-y-1">
@@ -101,7 +101,7 @@ function MilestoneBanner({ milestones }: { milestones: Milestone[] }) {
               <div key={i} className="text-xs text-amber-800 font-medium">
                 <span className="font-black">{m.name}</span> has been on the{" "}
                 <span className="font-black">{m.streakTitle}</span> streak for{" "}
-                <span className="font-black">{m.count} {m.unit}</span>! &#127881;
+                <span className="font-black">{m.count} {m.unit}</span>! 🎉
               </div>
             ))}
           </div>
@@ -174,7 +174,7 @@ function CreateStreakModal({
                 <button key={t} onClick={() => setType(t)}
                   className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all capitalize"
                   style={{ background: type === t ? "#111" : "transparent", color: type === t ? "#fff" : "#6b7280" }}>
-                  {t === "daily" ? "&#128293; Daily" : "&#128197; Weekly"}
+                  {t === "daily" ? "🔥 Daily" : "📅 Weekly"}
                 </button>
               ))}
             </div>
@@ -214,7 +214,7 @@ function CreateStreakModal({
             <button onClick={handleSubmit} disabled={saving}
               className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition"
               style={{ background: saving ? "#9ca3af" : "linear-gradient(135deg, #f59e0b, #ef4444)", cursor: saving ? "wait" : "pointer" }}>
-              {saving ? "Starting..." : "&#128293; Start it!"}
+              {saving ? "Starting..." : "🔥 Start it!"}
             </button>
           </div>
         </div>
@@ -296,7 +296,7 @@ function StreakCard({
           <div className="flex-1 min-w-0">
             {isDead && (
               <div className="text-xs font-bold text-gray-400 mb-1 uppercase tracking-widest">
-                &#128128; Streak dead — no active participants
+                💀 Streak dead — no active participants
               </div>
             )}
             <h3 className="text-base font-black text-gray-900 leading-tight">{streak.title}</h3>
@@ -310,7 +310,7 @@ function StreakCard({
                 background: streak.type === "daily" ? "#fff7ed" : "#f0fdf4",
                 color: streak.type === "daily" ? "#c2410c" : "#15803d",
               }}>
-              {streak.type === "daily" ? "&#128293;" : "&#128197;"} {badgeLabel}
+              {streak.type === "daily" ? "🔥" : "📅"} {badgeLabel}
             </div>
           )}
         </div>
@@ -355,7 +355,7 @@ function StreakCard({
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-sm font-semibold text-gray-700 truncate">{p.full_name}</span>
                     {isMe && <span className="text-[10px] font-bold text-indigo-400">you</span>}
-                    {isLongest && <span className="text-[10px]">&#128081;</span>}
+                    {isLongest && <span className="text-[10px]">👑</span>}
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
@@ -363,7 +363,7 @@ function StreakCard({
                         background: streak.type === "daily" ? "#fff7ed" : "#f0fdf4",
                         color: streak.type === "daily" ? "#c2410c" : "#15803d",
                       }}>
-                      {streak.type === "daily" ? "&#128293;" : "&#128197;"} {duration}
+                      {streak.type === "daily" ? "🔥" : "📅"} {duration}
                     </span>
                     <span className="text-[10px] text-gray-400">joined {joinDate}</span>
                   </div>
@@ -372,7 +372,7 @@ function StreakCard({
                   <button onClick={handleDead} disabled={busy}
                     className="text-[11px] font-bold px-3 py-1 rounded-full transition-all hover:scale-105 active:scale-95 shrink-0"
                     style={{ background: "#fef2f2", color: "#ef4444", border: "1px solid #fecaca" }}>
-                    &#128128; streak&rsquo;s dead
+                    💀 streak&rsquo;s dead
                   </button>
                 )}
               </div>
@@ -477,7 +477,7 @@ export default function StreakersPage() {
             <div style={{ position: "absolute", bottom: "-40px", left: "-40px", width: "260px", height: "260px", borderRadius: "50%", background: "radial-gradient(circle, rgba(239,68,68,0.2) 0%, transparent 70%)" }} />
           </div>
           <div className="relative space-y-6">
-            <div style={{ fontSize: 52 }}>&#127987;&#65039;</div>
+            <div style={{ fontSize: 52 }}>🏴</div>
             <h1 className="text-5xl sm:text-7xl font-black tracking-tight"
               style={{ color: "#fff", textShadow: "0 2px 20px rgba(0,0,0,0.4)", lineHeight: 1.1 }}>
               Streak<span style={{ color: "#f59e0b" }}>ers</span>
@@ -488,7 +488,7 @@ export default function StreakersPage() {
             <button onClick={() => setShowCreateModal(true)}
               className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl text-base font-bold text-white transition hover:scale-105 active:scale-95"
               style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", boxShadow: "0 4px 24px rgba(245,158,11,0.35)" }}>
-              &#128293; Start a Streak
+              🔥 Start a Streak
             </button>
           </div>
         </div>
@@ -505,7 +505,7 @@ export default function StreakersPage() {
             <>
               <section className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="text-2xl">&#128293;</div>
+                  <div className="text-2xl">🔥</div>
                   <div>
                     <div className="text-lg font-black text-gray-900">Daily Streaks</div>
                     <div className="text-xs text-gray-400">Do it every single day</div>
@@ -517,7 +517,7 @@ export default function StreakersPage() {
                 </div>
                 {dailyStreaks.length === 0 ? (
                   <div className="rounded-3xl py-12 text-center space-y-3" style={{ border: "2px dashed #e5e7eb" }}>
-                    <div style={{ fontSize: 36 }}>&#129354;</div>
+                    <div style={{ fontSize: 36 }}>🦥</div>
                     <div className="text-sm font-semibold text-gray-400">No daily streaks yet</div>
                     <button onClick={() => setShowCreateModal(true)}
                       className="text-xs font-bold text-orange-400 hover:text-orange-500 transition underline underline-offset-2">
@@ -536,7 +536,7 @@ export default function StreakersPage() {
 
               <section className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="text-2xl">&#128197;</div>
+                  <div className="text-2xl">📅</div>
                   <div>
                     <div className="text-lg font-black text-gray-900">Weekly Streaks</div>
                     <div className="text-xs text-gray-400">Once a week, every week</div>
@@ -548,7 +548,7 @@ export default function StreakersPage() {
                 </div>
                 {weeklyStreaks.length === 0 ? (
                   <div className="rounded-3xl py-12 text-center space-y-3" style={{ border: "2px dashed #e5e7eb" }}>
-                    <div style={{ fontSize: 36 }}>&#128197;</div>
+                    <div style={{ fontSize: 36 }}>📅</div>
                     <div className="text-sm font-semibold text-gray-400">No weekly streaks yet</div>
                     <button onClick={() => setShowCreateModal(true)}
                       className="text-xs font-bold text-green-500 hover:text-green-600 transition underline underline-offset-2">
