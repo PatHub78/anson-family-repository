@@ -48,7 +48,7 @@ export default function RootLayout({
               <NavLink href="/dashboard" label="Dashboard" />
               <NavLink href="/ketchup" label="Ketchup" />
               <NavLink href="/streakers" label="Streakers" />
-              <NavLink href="/weekly-challenges" label="Weekly Challenges!" />
+              <NavLink href="/weekly-challenges" label="I Wish You Would!" />
               <NavLink href="/recommendations" label="Recommendations" />
               <NavLink href="/word-play" label="WordSmith" />
             </nav>
