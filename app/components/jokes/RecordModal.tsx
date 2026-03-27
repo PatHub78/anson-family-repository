@@ -34,7 +34,6 @@ type Props = {
 }
 
 export default function RecordModal({ currentUserId, editingJoke, onSave, onClose }: Props) {
-  const supabase = createClientComponentClient()
   const [title, setTitle] = useState(editingJoke?.title ?? '')
   const [category, setCategory] = useState(editingJoke?.category ?? 'knock_knock')
   const [mode, setMode] = useState<'choose' | 'record' | 'upload'>('choose')

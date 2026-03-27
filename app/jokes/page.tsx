@@ -36,7 +36,6 @@ type Joke = {
 }
 
 export default function JokesPage() {
-  const supabase = createClientComponentClient()
   const [jokes, setJokes] = useState<Joke[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [currentUser, setCurrentUser] = useState<string | null>(null)
@@ -45,10 +44,6 @@ export default function JokesPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingJoke, setEditingJoke] = useState<Joke | null>(null)
   const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetchAll()
-  }, [])
 
   async function fetchAll() {
     setLoading(true)
@@ -68,6 +63,10 @@ export default function JokesPage() {
     setProfiles(profilesData ?? [])
     setLoading(false)
   }
+
+  useEffect(() => {
+    fetchAll()
+  }, [])
 
   function getFilteredJokes() {
     return jokes.filter(j => {
