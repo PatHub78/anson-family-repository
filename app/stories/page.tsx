@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import AuthGuard from '@/app/components/AuthGuard'
-import StoryCard from '@/components/stories/StoryCard'
-import StoryModal from '@/components/stories/StoryModal'
+import StoryCard from '../components/stories/StoryCard'
+import StoryModal from '../components/stories/StoryModal'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
