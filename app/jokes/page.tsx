@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import JokeCard from '@/components/jokes/JokeCard'
-import RecordModal from '@/components/jokes/RecordModal'
+import JokeCard from '../components/jokes/JokeCard'
+import RecordModal from '../components/jokes/RecordModal'
 import AuthGuard from '@/app/components/AuthGuard'
 import { createClient } from '@supabase/supabase-js'
 
