@@ -527,6 +527,9 @@ export default function WordSmithPage() {
               </div>
             )}
           </div>
+          
+          {/* ── Rules ── */}
+          <RulesCard />
 
           {/* ── Input ── */}
           <div
@@ -729,9 +732,6 @@ export default function WordSmithPage() {
               </div>
             </div>
           )}
-
-          {/* ── Rules ── */}
-          <RulesCard />
 
         </div>
       </div>

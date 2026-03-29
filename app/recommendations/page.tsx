@@ -816,4 +816,3 @@ export default function RecommendationsPage() {
       `}</style>
     </AuthGuard>
   );
-}
