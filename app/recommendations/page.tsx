@@ -32,7 +32,7 @@ interface SearchResult {
   image_url: string;
 }
 
-type MediaType = "book" | "movie" | "song" | "video";
+type MediaType = "book" | "movie" | "song" | "youtube" | "tv";
 type SortMode = "new" | "popular";
 type WizardStep = "type" | "search" | "confirm";
 
@@ -49,7 +49,6 @@ function firstName(name?: string | null) {
   return name.split(" ")[0];
 }
 
-/** Extract YouTube video ID from any YouTube URL format */
 function extractYouTubeId(url: string): string | null {
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
@@ -72,10 +71,11 @@ function getSongYouTubeUrl(title: string, creator: string) {
 }
 
 const TYPE_CONFIG: Record<MediaType, { label: string; emoji: string; color: string; bg: string }> = {
-  book:  { label: "Book",  emoji: "📖", color: "#92400e", bg: "#fef3c7" },
-  movie: { label: "Movie", emoji: "🎞️", color: "#1e3a8a", bg: "#dbeafe" },
-  song:  { label: "Song",  emoji: "🎵", color: "#065f46", bg: "#d1fae5" },
-  video: { label: "Video", emoji: "▶️", color: "#7f1d1d", bg: "#fee2e2" },
+  book:    { label: "Book",          emoji: "📖", color: "#92400e", bg: "#fef3c7" },
+  movie:   { label: "Movie",         emoji: "🎞️", color: "#1e3a8a", bg: "#dbeafe" },
+  song:    { label: "Song",          emoji: "🎵", color: "#065f46", bg: "#d1fae5" },
+  youtube: { label: "YouTube Video", emoji: "▶️", color: "#7f1d1d", bg: "#fee2e2" },
+  tv:      { label: "TV Show",       emoji: "📺", color: "#4c1d95", bg: "#ede9fe" },
 };
 
 // ─── API Search ───────────────────────────────────────────────────────────────
@@ -108,6 +108,22 @@ async function searchMovies(query: string): Promise<SearchResult[]> {
     .map((d: any) => ({
       title: d.title,
       creator: d.release_date?.split("-")[0] ?? "",
+      image_url: `https://image.tmdb.org/t/p/w300${d.poster_path}`,
+    }));
+}
+
+async function searchTV(query: string): Promise<SearchResult[]> {
+  if (!query.trim() || !TMDB_KEY) return [];
+  const res = await fetch(
+    `https://api.themoviedb.org/3/search/tv?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}&page=1`
+  );
+  const json = await res.json();
+  return (json.results || [])
+    .filter((d: any) => d.poster_path)
+    .slice(0, 9)
+    .map((d: any) => ({
+      title: d.name,
+      creator: d.first_air_date?.split("-")[0] ?? "",
       image_url: `https://image.tmdb.org/t/p/w300${d.poster_path}`,
     }));
 }
@@ -167,17 +183,14 @@ function HeartButton({ liked, count, onClick }: { liked: boolean; count: number;
 // ─── Recommendation Card ──────────────────────────────────────────────────────
 
 function RecommendationCard({ rec, onLike }: { rec: Recommendation; onLike: (id: number) => void }) {
-  const isVideo = rec.type === "video";
+  const isVideo = rec.type === "youtube";
   const isSong = rec.type === "song";
 
-  // For songs: clicking opens YouTube search
   const songYouTubeUrl = isSong && rec.title
     ? getSongYouTubeUrl(rec.title, rec.creator ?? "")
     : null;
 
-  // For videos: clicking opens YouTube directly
   const videoUrl = isVideo && rec.youtube_url ? rec.youtube_url : null;
-
   const clickUrl = videoUrl || songYouTubeUrl;
 
   const cardContent = (
@@ -185,7 +198,6 @@ function RecommendationCard({ rec, onLike }: { rec: Recommendation; onLike: (id:
       className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 flex flex-col"
       style={{ border: "1px solid #f0f0f0", cursor: clickUrl ? "pointer" : "default" }}
     >
-      {/* Cover / thumbnail */}
       <div className="relative aspect-square overflow-hidden bg-gray-100">
         <img
           src={rec.image_url}
@@ -199,7 +211,6 @@ function RecommendationCard({ rec, onLike }: { rec: Recommendation; onLike: (id:
         />
         <TypeBadge type={rec.type} />
 
-        {/* Play button overlay for videos */}
         {isVideo && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div
@@ -213,7 +224,6 @@ function RecommendationCard({ rec, onLike }: { rec: Recommendation; onLike: (id:
           </div>
         )}
 
-        {/* YouTube icon for songs */}
         {isSong && (
           <div className="absolute bottom-2 right-2">
             <div
@@ -228,7 +238,6 @@ function RecommendationCard({ rec, onLike }: { rec: Recommendation; onLike: (id:
         )}
       </div>
 
-      {/* Info */}
       <div className="p-3 flex flex-col gap-1 flex-1">
         {rec.title && (
           <div className="text-xs font-semibold leading-tight line-clamp-2" style={{ color: "#111" }}>
@@ -238,8 +247,6 @@ function RecommendationCard({ rec, onLike }: { rec: Recommendation; onLike: (id:
         {rec.creator && (
           <div className="text-xs text-gray-400 leading-tight line-clamp-1">{rec.creator}</div>
         )}
-
-        {/* Footer */}
         <div className="flex items-center justify-between mt-auto pt-2">
           <div className="flex items-center gap-1.5">
             <img
@@ -293,14 +300,15 @@ function AddWizard({
   const [noKey, setNoKey] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [youtubeError, setYoutubeError] = useState("");
+  const [customTitle, setCustomTitle] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setNoKey(mediaType === "movie" && !TMDB_KEY);
+    setNoKey((mediaType === "movie" || mediaType === "tv") && !TMDB_KEY);
   }, [mediaType]);
 
   useEffect(() => {
-    if (step !== "search" || mediaType === "video") return;
+    if (step !== "search" || mediaType === "youtube") return;
     if (!query.trim()) { setResults([]); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -309,6 +317,7 @@ function AddWizard({
       if (mediaType === "book") res = await searchBooks(query);
       else if (mediaType === "movie") res = await searchMovies(query);
       else if (mediaType === "song") res = await searchSongs(query);
+      else if (mediaType === "tv") res = await searchTV(query);
       setResults(res);
       setSearching(false);
     }, 400);
@@ -329,7 +338,6 @@ function AddWizard({
     setStep("confirm");
   };
 
-  // Handle YouTube URL submission
   const handleYouTubeSubmit = () => {
     const videoId = extractYouTubeId(youtubeUrl.trim());
     if (!videoId) {
@@ -338,15 +346,9 @@ function AddWizard({
     }
     setYoutubeError("");
     const thumbnailUrl = getYouTubeThumbnail(videoId);
-    setSelected({
-      title: "", // user will see a title input in confirm step
-      creator: "",
-      image_url: thumbnailUrl,
-    });
+    setSelected({ title: "", creator: "", image_url: thumbnailUrl });
     setStep("confirm");
   };
-
-  const [customTitle, setCustomTitle] = useState("");
 
   const handleSave = async () => {
     if (!selected) return;
@@ -362,8 +364,8 @@ function AddWizard({
     const { data: userData } = await supabase.auth.getUser();
     const email = userData.user?.email ?? "";
 
-    const videoId = mediaType === "video" ? extractYouTubeId(youtubeUrl.trim()) : null;
-    const finalTitle = mediaType === "video" ? (customTitle.trim() || null) : selected.title;
+    const videoId = mediaType === "youtube" ? extractYouTubeId(youtubeUrl.trim()) : null;
+    const finalTitle = mediaType === "youtube" ? (customTitle.trim() || null) : selected.title;
 
     const { data, error } = await supabase
       .from("recommendations")
@@ -408,8 +410,8 @@ function AddWizard({
           <div>
             <div className="text-lg font-bold text-gray-900">
               {step === "type"    && "What are you sharing?"}
-              {step === "search"  && mediaType === "video" && "Paste a YouTube link"}
-              {step === "search"  && mediaType !== "video" && `Search for a ${TYPE_CONFIG[mediaType].label}`}
+              {step === "search"  && mediaType === "youtube" && "Paste a YouTube link"}
+              {step === "search"  && mediaType !== "youtube" && `Search for a ${TYPE_CONFIG[mediaType].label}`}
               {step === "confirm" && "Looks good?"}
             </div>
             <div className="flex gap-1.5 mt-2">
@@ -450,8 +452,8 @@ function AddWizard({
             </div>
           )}
 
-          {/* STEP 2 — Search (books, movies, songs) */}
-          {step === "search" && mediaType !== "video" && (
+          {/* STEP 2 — Search (books, movies, songs, tv) */}
+          {step === "search" && mediaType !== "youtube" && (
             <div className="space-y-4 pt-2">
               {noKey && (
                 <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3">
@@ -504,7 +506,7 @@ function AddWizard({
           )}
 
           {/* STEP 2 — YouTube URL input */}
-          {step === "search" && mediaType === "video" && (
+          {step === "search" && mediaType === "youtube" && (
             <div className="space-y-4 pt-2">
               <div
                 className="rounded-xl p-4 text-sm text-red-700 space-y-1"
@@ -532,7 +534,6 @@ function AddWizard({
                 <div className="text-xs text-red-500 font-medium">{youtubeError}</div>
               )}
 
-              {/* Live preview of thumbnail */}
               {youtubeUrl && extractYouTubeId(youtubeUrl) && (
                 <div className="rounded-xl overflow-hidden aspect-video bg-gray-100">
                   <img
@@ -569,8 +570,7 @@ function AddWizard({
                   className="w-24 h-24 object-cover rounded-xl shadow"
                 />
                 <div className="flex-1 pt-1 space-y-2">
-                  {/* Video title input */}
-                  {mediaType === "video" ? (
+                  {mediaType === "youtube" ? (
                     <input
                       autoFocus
                       type="text"
@@ -686,7 +686,6 @@ export default function RecommendationsPage() {
   };
 
   const handleSaved = (rec: Recommendation) => setRows((prev) => [rec, ...prev]);
-
   const users = useMemo(() => Array.from(new Set(rows.map((r) => r.full_name))), [rows]);
 
   const filtered = useMemo(() => {
@@ -703,7 +702,8 @@ export default function RecommendationsPage() {
     books:  rows.filter((r) => r.type === "book").length,
     movies: rows.filter((r) => r.type === "movie").length,
     songs:  rows.filter((r) => r.type === "song").length,
-    videos: rows.filter((r) => r.type === "video").length,
+    tv:     rows.filter((r) => r.type === "tv").length,
+    videos: rows.filter((r) => r.type === "youtube").length,
     total:  rows.length,
   }), [rows]);
 
@@ -725,7 +725,7 @@ export default function RecommendationsPage() {
           <h1 className="text-5xl font-bold tracking-tight" style={{ color: "#111" }}>Recommendations</h1>
           <p className="text-gray-400 text-sm">
             {stats.total} picks from the family
-            {stats.total > 0 && ` · ${stats.books} books · ${stats.movies} movies · ${stats.songs} songs · ${stats.videos} videos`}
+            {stats.total > 0 && ` · ${stats.books} books · ${stats.movies} movies · ${stats.songs} songs · ${stats.tv} TV shows · ${stats.videos} videos`}
           </p>
         </div>
 
