@@ -133,9 +133,17 @@ export default function StoriesPage() {
     <AuthGuard>
       <div className="min-h-screen bg-gray-50 pb-24">
         {/* Header */}
-        <div className="bg-white border-b px-6 py-5">
-          <h1 className="text-2xl font-bold text-gray-900">📖 Stories</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Family memories, one recording at a time</p>
+        <div className="bg-white border-b px-6 py-5 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">📖 Stories</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Family memories, one recording at a time</p>
+          </div>
+          <button
+            onClick={() => { setEditingStory(null); setShowModal(true) }}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+          >
+            <span className="text-lg">+</span> Share a Story
+          </button>
         </div>
 
         {/* Mood filter */}
