@@ -78,8 +78,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </aside>
 
         {/* ── Main content ── */}
-        <main className="md:ml-16 min-h-screen px-4 sm:px-6 py-6 pb-24 md:pb-6 max-w-6xl mx-auto md:mx-0">
-          {children}
+        <main className="md:pl-16 min-h-screen px-4 sm:px-6 py-6 pb-24 md:pb-6">
+          <div className="max-w-6xl mx-auto">
+            {children}
+          </div>
         </main>
 
         {/* ── Mobile bottom bar ── */}
