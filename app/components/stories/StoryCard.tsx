@@ -8,26 +8,42 @@ type Profile = {
   first_name: string
 }
 
-type Joke = {
+type Story = {
   id: string
   user_id: string
   title: string
-  category: string
+  mood: string
+  era: string
   audio_url: string
   created_at: string
+  story_people: { profile_email: string }[]
   poster_email?: string
 }
 
+const MOOD_LABELS: Record<string, string> = {
+  funny: '😄 Funny',
+  nostalgic: '🌅 Nostalgic',
+  heartwarming: '🥰 Heartwarming',
+  bittersweet: '🍂 Bittersweet',
+}
+
+const ERA_LABELS: Record<string, string> = {
+  childhood: '🧸 Childhood',
+  teen_years: '🎒 Teen Years',
+  adult: '🏠 Adult',
+  recent: '📅 Recent',
+}
+
 type Props = {
-  joke: Joke
+  story: Story
   profiles: Profile[]
   getAvatarUrl: (fullName: string) => string
   isOwner: boolean
   onDelete: (id: string, audioUrl: string) => void
-  onReRecord: (joke: Joke) => void
+  onReRecord: (story: Story) => void
 }
 
-export default function JokeCard({ joke, profiles, getAvatarUrl, isOwner, onDelete, onReRecord }: Props) {
+export default function StoryCard({ story, profiles, getAvatarUrl, isOwner, onDelete, onReRecord }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -66,35 +82,50 @@ export default function JokeCard({ joke, profiles, getAvatarUrl, isOwner, onDele
     return `${m}:${sec.toString().padStart(2, '0')}`
   }
 
-  const posterProfile = profiles.find(p => p.email === joke.poster_email)
+  const peopleInStory = profiles.filter(p =>
+    story.story_people.some(sp => sp.profile_email === p.email)
+  )
+
+  // Find poster profile by matching story_people or fall back to first person
+  const posterProfile = profiles.find(p => p.email === story.poster_email)
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col gap-3">
-      {/* User info */}
-      <div className="flex items-center gap-2">
-        <img
-          src={posterProfile ? getAvatarUrl(posterProfile.full_name) : ''}
-          alt={posterProfile?.first_name ?? ''}
-          className="w-8 h-8 rounded-full object-cover bg-indigo-100"
-        />
-        <div>
-          <p className="text-xs font-semibold text-gray-800">{posterProfile?.first_name ?? 'Someone'}</p>
-          <p className="text-xs text-gray-400">{new Date(joke.created_at).toLocaleDateString()}</p>
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4">
+      {/* Top row: poster + owner actions */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          {posterProfile && (
+            <img
+              src={getAvatarUrl(posterProfile.full_name)}
+              alt={posterProfile.first_name}
+              className="w-9 h-9 rounded-full object-cover"
+            />
+          )}
+          <div>
+            <p className="text-sm font-semibold text-gray-800">
+              {posterProfile?.first_name ?? 'Someone'}
+            </p>
+            <p className="text-xs text-gray-400">
+              {new Date(story.created_at).toLocaleDateString('en-GB', {
+                day: 'numeric', month: 'short', year: 'numeric'
+              })}
+            </p>
+          </div>
         </div>
 
         {isOwner && (
-          <div className="ml-auto flex gap-2">
+          <div className="flex gap-2 items-center">
             <button
-              onClick={() => onReRecord(joke)}
+              onClick={() => onReRecord(story)}
+              className="text-gray-400 hover:text-indigo-500 transition-colors"
               title="Re-record"
-              className="text-gray-400 hover:text-indigo-500 transition-colors text-sm"
             >
               🔄
             </button>
             {confirmDelete ? (
               <div className="flex gap-1 items-center">
                 <button
-                  onClick={() => onDelete(joke.id, joke.audio_url)}
+                  onClick={() => onDelete(story.id, story.audio_url)}
                   className="text-xs text-red-500 font-medium hover:underline"
                 >
                   Confirm
@@ -109,8 +140,8 @@ export default function JokeCard({ joke, profiles, getAvatarUrl, isOwner, onDele
             ) : (
               <button
                 onClick={() => setConfirmDelete(true)}
+                className="text-gray-400 hover:text-red-400 transition-colors"
                 title="Delete"
-                className="text-gray-400 hover:text-red-400 transition-colors text-sm"
               >
                 🗑️
               </button>
@@ -120,7 +151,34 @@ export default function JokeCard({ joke, profiles, getAvatarUrl, isOwner, onDele
       </div>
 
       {/* Title */}
-      <p className="text-sm font-semibold text-gray-900 leading-snug">{joke.title}</p>
+      <p className="text-base font-semibold text-gray-900 leading-snug">{story.title}</p>
+
+      {/* Badges */}
+      <div className="flex gap-2 flex-wrap">
+        <span className="text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-medium">
+          {MOOD_LABELS[story.mood]}
+        </span>
+        <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-medium">
+          {ERA_LABELS[story.era]}
+        </span>
+      </div>
+
+      {/* People in story */}
+      {peopleInStory.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-400">Featuring:</span>
+          {peopleInStory.map(p => (
+            <div key={p.email} className="flex items-center gap-1">
+              <img
+                src={getAvatarUrl(p.full_name)}
+                alt={p.first_name}
+                className="w-5 h-5 rounded-full object-cover"
+              />
+              <span className="text-xs font-medium text-gray-600">{p.first_name}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Audio player */}
       <div className="flex items-center gap-2">
@@ -146,7 +204,7 @@ export default function JokeCard({ joke, profiles, getAvatarUrl, isOwner, onDele
 
       <audio
         ref={audioRef}
-        src={joke.audio_url}
+        src={story.audio_url}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}

@@ -8,11 +8,18 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-const CATEGORIES = [
-  { key: 'knock_knock', label: 'Knock Knock' },
-  { key: 'one_liner', label: 'One-Liner' },
-  { key: 'guy_walks_in', label: 'Guy Walks Into a Bar' },
-  { key: 'other', label: 'Other' },
+const MOODS = [
+  { key: 'funny', label: '😄 Funny' },
+  { key: 'nostalgic', label: '🌅 Nostalgic' },
+  { key: 'heartwarming', label: '🥰 Heartwarming' },
+  { key: 'bittersweet', label: '🍂 Bittersweet' },
+]
+
+const ERAS = [
+  { key: 'childhood', label: '🧸 Childhood' },
+  { key: 'teen_years', label: '🎒 Teen Years' },
+  { key: 'adult', label: '🏠 Adult' },
+  { key: 'recent', label: '📅 Recent' },
 ]
 
 type Profile = {
@@ -21,28 +28,34 @@ type Profile = {
   first_name: string
 }
 
-type Joke = {
+type Story = {
   id: string
   user_id: string
   title: string
-  category: string
+  mood: string
+  era: string
   audio_url: string
   created_at: string
+  story_people: { profile_email: string }[]
   poster_email?: string
 }
 
 type Props = {
   currentUser: { id: string; email: string }
-  editingJoke: Joke | null
+  editingStory: Story | null
   profiles: Profile[]
   getAvatarUrl: (fullName: string) => string
   onSave: () => void
   onClose: () => void
 }
 
-export default function RecordModal({ currentUser, editingJoke, profiles, getAvatarUrl, onSave, onClose }: Props) {
-  const [title, setTitle] = useState(editingJoke?.title ?? '')
-  const [category, setCategory] = useState(editingJoke?.category ?? 'knock_knock')
+export default function StoryModal({ currentUser, editingStory, profiles, getAvatarUrl, onSave, onClose }: Props) {
+  const [title, setTitle] = useState(editingStory?.title ?? '')
+  const [mood, setMood] = useState(editingStory?.mood ?? 'funny')
+  const [era, setEra] = useState(editingStory?.era ?? 'recent')
+  const [selectedPeople, setSelectedPeople] = useState<string[]>(
+    editingStory?.story_people.map(sp => sp.profile_email) ?? []
+  )
   const [mode, setMode] = useState<'choose' | 'record' | 'upload'>('choose')
   const [recording, setRecording] = useState(false)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
@@ -51,6 +64,12 @@ export default function RecordModal({ currentUser, editingJoke, profiles, getAva
   const [error, setError] = useState<string | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+
+  function togglePerson(email: string) {
+    setSelectedPeople(prev =>
+      prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]
+    )
+  }
 
   async function startRecording() {
     try {
@@ -86,51 +105,64 @@ export default function RecordModal({ currentUser, editingJoke, profiles, getAva
 
   async function handleSave() {
     if (!title.trim()) return setError('Please add a title.')
-    if (!audioBlob && !editingJoke) return setError('Please record or upload audio.')
+    if (!audioBlob && !editingStory) return setError('Please record or upload audio.')
     setSaving(true)
     setError(null)
 
     try {
-      let finalAudioUrl = editingJoke?.audio_url ?? ''
+      let finalAudioUrl = editingStory?.audio_url ?? ''
 
       if (audioBlob) {
         const ext = audioBlob.type.includes('webm') ? 'webm' : 'mp3'
         const path = `${currentUser.id}/${Date.now()}.${ext}`
 
-        if (editingJoke) {
-          const oldPath = editingJoke.audio_url.split('/joke-audio/')[1]
-          if (oldPath) await supabase.storage.from('joke-audio').remove([oldPath])
+        if (editingStory) {
+          const oldPath = editingStory.audio_url.split('/story-audio/')[1]
+          if (oldPath) await supabase.storage.from('story-audio').remove([oldPath])
         }
 
         const { error: uploadError } = await supabase.storage
-          .from('joke-audio')
+          .from('story-audio')
           .upload(path, audioBlob, { contentType: audioBlob.type })
 
         if (uploadError) throw uploadError
 
         const { data: { publicUrl } } = supabase.storage
-          .from('joke-audio')
+          .from('story-audio')
           .getPublicUrl(path)
 
         finalAudioUrl = publicUrl
       }
 
-      if (editingJoke) {
+      let storyId = editingStory?.id
+
+      if (editingStory) {
         const { error: updateError } = await supabase
-          .from('jokes')
-          .update({ title, category, audio_url: finalAudioUrl })
-          .eq('id', editingJoke.id)
+          .from('stories')
+          .update({ title, mood, era, audio_url: finalAudioUrl })
+          .eq('id', editingStory.id)
         if (updateError) throw updateError
       } else {
-        const { error: insertError } = await supabase
-          .from('jokes')
-          .insert({ user_id: currentUser.id, title, category, audio_url: finalAudioUrl })
+        const { data, error: insertError } = await supabase
+          .from('stories')
+          .insert({ user_id: currentUser.id, title, mood, era, audio_url: finalAudioUrl })
+          .select('id')
+          .single()
         if (insertError) throw insertError
+        storyId = data.id
+      }
+
+      // Sync story_people
+      await supabase.from('story_people').delete().eq('story_id', storyId)
+      if (selectedPeople.length > 0) {
+        await supabase.from('story_people').insert(
+          selectedPeople.map(email => ({ story_id: storyId, profile_email: email }))
+        )
       }
 
       onSave()
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Something went wrong.')
+    } catch (e: any) {
+      setError(e.message ?? 'Something went wrong.')
     } finally {
       setSaving(false)
     }
@@ -138,10 +170,10 @@ export default function RecordModal({ currentUser, editingJoke, profiles, getAva
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">
-            {editingJoke ? 'Re-record Joke' : 'Add a Joke'}
+            {editingStory ? 'Edit Story' : 'Share a Story'}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
         </div>
@@ -152,29 +184,78 @@ export default function RecordModal({ currentUser, editingJoke, profiles, getAva
           <input
             value={title}
             onChange={e => setTitle(e.target.value)}
-            placeholder="e.g. Why don't scientists trust atoms?"
+            placeholder="e.g. The time Dad got lost in IKEA"
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
           />
         </div>
 
-        {/* Category */}
+        {/* Mood */}
         <div>
-          <label className="text-xs font-medium text-gray-600 block mb-1">Category</label>
-          <select
-            value={category}
-            onChange={e => setCategory(e.target.value)}
-            aria-label="Joke category"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          >
-            {CATEGORIES.map(c => (
-              <option key={c.key} value={c.key}>{c.label}</option>
+          <label className="text-xs font-medium text-gray-600 block mb-2">Mood</label>
+          <div className="flex gap-2 flex-wrap">
+            {MOODS.map(m => (
+              <button
+                key={m.key}
+                onClick={() => setMood(m.key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
+                  ${mood === m.key
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              >
+                {m.label}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
 
-        {/* Audio input */}
+        {/* Era */}
         <div>
-          <label className="text-xs font-medium text-gray-600 block mb-2">Audio</label>
+          <label className="text-xs font-medium text-gray-600 block mb-2">Era</label>
+          <div className="flex gap-2 flex-wrap">
+            {ERAS.map(e => (
+              <button
+                key={e.key}
+                onClick={() => setEra(e.key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
+                  ${era === e.key
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              >
+                {e.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* People */}
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-2">Who's in this story?</label>
+          <div className="flex gap-2 flex-wrap">
+            {profiles.map(p => (
+              <button
+                key={p.email}
+                onClick={() => togglePerson(p.email)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
+                  ${selectedPeople.includes(p.email)
+                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              >
+                <img
+                  src={getAvatarUrl(p.full_name)}
+                  alt={p.first_name}
+                  className="w-4 h-4 rounded-full object-cover"
+                />
+                {p.first_name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Audio */}
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-2">
+            {editingStory ? 'Re-record (optional)' : 'Record your story'}
+          </label>
 
           {mode === 'choose' && (
             <div className="flex gap-3">
@@ -253,7 +334,7 @@ export default function RecordModal({ currentUser, editingJoke, profiles, getAva
           disabled={saving}
           className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
         >
-          {saving ? 'Saving...' : editingJoke ? 'Save Re-recording' : 'Post Joke'}
+          {saving ? 'Saving...' : editingStory ? 'Save Changes' : 'Share Story'}
         </button>
       </div>
     </div>

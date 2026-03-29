@@ -1,15 +1,20 @@
 'use client'
 
-// app/jokes/page.tsx
 import { useEffect, useState } from 'react'
-import JokeCard from '../components/jokes/JokeCard'
-import RecordModal from '../components/jokes/RecordModal'
+import JokeCard from '@/components/jokes/JokeCard'
+import RecordModal from '@/components/jokes/RecordModal'
+import AuthGuard from '@/app/components/AuthGuard'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
+
+function getAvatarUrl(fullName: string) {
+  const fileName = fullName.toLowerCase().replaceAll(' ', '-') + '.jpg'
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${fileName}`
+}
 
 const CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -20,9 +25,9 @@ const CATEGORIES = [
 ]
 
 type Profile = {
-  id: string
+  email: string
   full_name: string
-  avatar_url: string
+  first_name: string
 }
 
 type Joke = {
@@ -32,13 +37,13 @@ type Joke = {
   category: string
   audio_url: string
   created_at: string
-  profiles: Profile
+  poster_email?: string
 }
 
 export default function JokesPage() {
   const [jokes, setJokes] = useState<Joke[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
   const [activeCategory, setActiveCategory] = useState('all')
   const [activeProfile, setActiveProfile] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
@@ -48,16 +53,16 @@ export default function JokesPage() {
   async function fetchAll() {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    setCurrentUser(user?.id ?? null)
+    if (user) setCurrentUser({ id: user.id, email: user.email ?? '' })
 
     const { data: jokesData } = await supabase
       .from('jokes')
-      .select('*, profiles(id, full_name, avatar_url)')
+      .select('*')
       .order('created_at', { ascending: false })
 
     const { data: profilesData } = await supabase
       .from('profiles')
-      .select('id, full_name, avatar_url')
+      .select('email, full_name, first_name')
 
     setJokes(jokesData ?? [])
     setProfiles(profilesData ?? [])
@@ -90,7 +95,6 @@ export default function JokesPage() {
   }
 
   async function handleDelete(id: string, audioUrl: string) {
-    // Extract storage path from URL
     const path = audioUrl.split('/joke-audio/')[1]
     if (path) await supabase.storage.from('joke-audio').remove([path])
     await supabase.from('jokes').delete().eq('id', id)
@@ -102,114 +106,116 @@ export default function JokesPage() {
     setShowModal(true)
   }
 
-  async function handleSave(joke: Joke) {
-    setJokes(prev =>
-      editingJoke
-        ? prev.map(j => j.id === joke.id ? joke : j)
-        : [joke, ...prev]
-    )
+  async function handleSave() {
     setShowModal(false)
     setEditingJoke(null)
-    // Refetch to get joined profile data
     fetchAll()
   }
 
   const grouped = getJokesByCategory()
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-white border-b px-6 py-5">
-        <h1 className="text-2xl font-bold text-gray-900">🎤 Jokes</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Guy walks into a bar...</p>
-      </div>
+    <AuthGuard>
+      <div className="min-h-screen bg-gray-50 pb-24">
+        {/* Header */}
+        <div className="bg-white border-b px-6 py-5">
+          <h1 className="text-2xl font-bold text-gray-900">🎤 Jokes</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Guy walks into a bar...</p>
+        </div>
 
-      {/* Category tabs */}
-      <div className="bg-white border-b px-6 overflow-x-auto">
-        <div className="flex gap-1 py-2 min-w-max">
-          {CATEGORIES.map(cat => (
+        {/* Category tabs */}
+        <div className="bg-white border-b px-6 overflow-x-auto">
+          <div className="flex gap-1 py-2 min-w-max">
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat.key}
+                onClick={() => setActiveCategory(cat.key)}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap
+                  ${activeCategory === cat.key
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Profile filter */}
+        <div className="px-6 py-3 flex gap-2 overflow-x-auto bg-white border-b">
+          <button
+            onClick={() => setActiveProfile(null)}
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors
+              ${!activeProfile ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+          >
+            Everyone
+          </button>
+          {profiles.map(p => (
             <button
-              key={cat.key}
-              onClick={() => setActiveCategory(cat.key)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap
-                ${activeCategory === cat.key
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'}`}
+              key={p.email}
+              onClick={() => setActiveProfile(prev => prev === p.email ? null : p.email)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors
+                ${activeProfile === p.email ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
             >
-              {cat.label}
+              <img
+                src={getAvatarUrl(p.full_name)}
+                alt={p.first_name}
+                className="w-4 h-4 rounded-full object-cover"
+              />
+              {p.first_name}
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Profile filter */}
-      <div className="px-6 py-3 flex gap-2 overflow-x-auto bg-white border-b">
-        <button
-          onClick={() => setActiveProfile(null)}
-          className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors
-            ${!activeProfile ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-        >
-          Everyone
-        </button>
-        {profiles.map(p => (
-          <button
-            key={p.id}
-            onClick={() => setActiveProfile(prev => prev === p.id ? null : p.id)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors
-              ${activeProfile === p.id ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-          >
-            {p.avatar_url && (
-              <img src={p.avatar_url} className="w-4 h-4 rounded-full object-cover" />
-            )}
-            {p.full_name.split(' ')[0]}
-          </button>
-        ))}
-      </div>
-
-      {/* Jokes */}
-      <div className="px-6 py-6 space-y-8">
-        {loading ? (
-          <p className="text-gray-400 text-sm">Loading jokes...</p>
-        ) : Object.keys(grouped).length === 0 ? (
-          <p className="text-gray-400 text-sm">No jokes yet — be the first!</p>
-        ) : (
-          Object.entries(grouped).map(([catKey, items]) => (
-            <div key={catKey}>
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
-                {CATEGORIES.find(c => c.key === catKey)?.label}
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {items.map(joke => (
-                  <JokeCard
-                    key={joke.id}
-                    joke={joke}
-                    isOwner={joke.user_id === currentUser}
-                    onDelete={handleDelete}
-                    onReRecord={handleReRecord}
-                  />
-                ))}
+        {/* Jokes */}
+        <div className="px-6 py-6 space-y-8">
+          {loading ? (
+            <p className="text-gray-400 text-sm">Loading jokes...</p>
+          ) : Object.keys(grouped).length === 0 ? (
+            <p className="text-gray-400 text-sm">No jokes yet — be the first!</p>
+          ) : (
+            Object.entries(grouped).map(([catKey, items]) => (
+              <div key={catKey}>
+                <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
+                  {CATEGORIES.find(c => c.key === catKey)?.label}
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {items.map(joke => (
+                    <JokeCard
+                      key={joke.id}
+                      joke={joke}
+                      profiles={profiles}
+                      getAvatarUrl={getAvatarUrl}
+                      isOwner={joke.user_id === currentUser?.id}
+                      onDelete={handleDelete}
+                      onReRecord={handleReRecord}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))
+            ))
+          )}
+        </div>
+
+        {/* FAB */}
+        <button
+          onClick={() => { setEditingJoke(null); setShowModal(true) }}
+          className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg flex items-center justify-center text-2xl transition-colors"
+        >
+          +
+        </button>
+
+        {showModal && currentUser && (
+          <RecordModal
+            currentUser={currentUser}
+            editingJoke={editingJoke}
+            profiles={profiles}
+            getAvatarUrl={getAvatarUrl}
+            onSave={handleSave}
+            onClose={() => { setShowModal(false); setEditingJoke(null) }}
+          />
         )}
       </div>
-
-      {/* FAB */}
-      <button
-        onClick={() => { setEditingJoke(null); setShowModal(true) }}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg flex items-center justify-center text-2xl transition-colors"
-      >
-        +
-      </button>
-
-      {showModal && (
-        <RecordModal
-          currentUserId={currentUser!}
-          editingJoke={editingJoke}
-          onSave={handleSave}
-          onClose={() => { setShowModal(false); setEditingJoke(null) }}
-        />
-      )}
-    </div>
+    </AuthGuard>
   )
 }
