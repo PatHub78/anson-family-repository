@@ -3,13 +3,12 @@
 import { useState } from 'react'
 import { Chess } from 'chess.js'
 
-// Lichess CBurnett piece set (open source, served via jsDelivr CDN)
-const BASE = 'https://cdn.jsdelivr.net/gh/lichess-org/lila/public/piece/cburnett'
+// CBurnett piece set served from /public/pieces/
 const PIECE_IMG: Record<string, string> = {
-  wK: `${BASE}/wK.svg`, wQ: `${BASE}/wQ.svg`, wR: `${BASE}/wR.svg`,
-  wB: `${BASE}/wB.svg`, wN: `${BASE}/wN.svg`, wP: `${BASE}/wP.svg`,
-  bK: `${BASE}/bK.svg`, bQ: `${BASE}/bQ.svg`, bR: `${BASE}/bR.svg`,
-  bB: `${BASE}/bB.svg`, bN: `${BASE}/bN.svg`, bP: `${BASE}/bP.svg`,
+  wK: '/pieces/wK.svg', wQ: '/pieces/wQ.svg', wR: '/pieces/wR.svg',
+  wB: '/pieces/wB.svg', wN: '/pieces/wN.svg', wP: '/pieces/wP.svg',
+  bK: '/pieces/bK.svg', bQ: '/pieces/bQ.svg', bR: '/pieces/bR.svg',
+  bB: '/pieces/bB.svg', bN: '/pieces/bN.svg', bP: '/pieces/bP.svg',
 }
 
 // Chess.com colour palette
