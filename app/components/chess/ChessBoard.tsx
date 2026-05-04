@@ -122,7 +122,12 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
     setPendingFrom(null); setPromoSquare(null)
   }
 
-  const SQ = 56  // square size in px
+  // Squares shrink to fit viewport on mobile, cap at 56px on desktop.
+  // 100vw minus page padding (32px) minus rank-label column (18px), divided by 8 squares.
+  const sqStyle = {
+    width:  'min(56px, calc((100vw - 50px) / 8))',
+    height: 'min(56px, calc((100vw - 50px) / 8))',
+  } as React.CSSProperties
 
   return (
     <div className="select-none inline-block">
@@ -167,7 +172,7 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
               return (
                 <button key={sq} onClick={() => handleClick(sq)}
                   className="relative flex items-center justify-center focus:outline-none"
-                  style={{ width: SQ, height: SQ, background: bg }}
+                  style={{ ...sqStyle, background: bg }}
                 >
                   {/* File label on bottom rank */}
                   {rank === (playerColor === 'b' ? '8' : '1') && (
