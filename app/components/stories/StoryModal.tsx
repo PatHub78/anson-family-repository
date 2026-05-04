@@ -9,8 +9,8 @@ const supabase = createClient(
 )
 
 const MOODS = [
-  { key: 'funny', label: '😄 Funny' },
-  { key: 'nostalgic', label: '🌅 Nostalgic' },
+  { key: 'funny',        label: '😄 Funny' },
+  { key: 'nostalgic',   label: '🌅 Nostalgic' },
   { key: 'heartwarming', label: '🥰 Heartwarming' },
   { key: 'bittersweet', label: '🍂 Bittersweet' },
 ]
@@ -18,8 +18,8 @@ const MOODS = [
 const ERAS = [
   { key: 'childhood', label: '🧸 Childhood' },
   { key: 'teen_years', label: '🎒 Teen Years' },
-  { key: 'adult', label: '🏠 Adult' },
-  { key: 'recent', label: '📅 Recent' },
+  { key: 'adult',     label: '🏠 Adult' },
+  { key: 'recent',    label: '📅 Recent' },
 ]
 
 type Profile = {
@@ -49,14 +49,17 @@ type Props = {
   onClose: () => void
 }
 
+const STEPS = ['Name it', 'Tag it', 'Record it']
+
 export default function StoryModal({ currentUser, editingStory, profiles, getAvatarUrl, onSave, onClose }: Props) {
+  const [step, setStep] = useState(0)
   const [title, setTitle] = useState(editingStory?.title ?? '')
-  const [mood, setMood] = useState(editingStory?.mood ?? 'funny')
-  const [era, setEra] = useState(editingStory?.era ?? 'recent')
   const [selectedPeople, setSelectedPeople] = useState<string[]>(
     editingStory?.story_people.map(sp => sp.profile_email) ?? []
   )
-  const [mode, setMode] = useState<'choose' | 'record' | 'upload'>('choose')
+  const [mood, setMood] = useState(editingStory?.mood ?? '')
+  const [era, setEra] = useState(editingStory?.era ?? '')
+  const [audioMode, setAudioMode] = useState<'choose' | 'record' | 'upload'>('choose')
   const [recording, setRecording] = useState(false)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
@@ -69,6 +72,30 @@ export default function StoryModal({ currentUser, editingStory, profiles, getAva
     setSelectedPeople(prev =>
       prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]
     )
+  }
+
+  function goNext() {
+    setError(null)
+    if (step === 0 && !title.trim()) {
+      setError('Give the story a title before continuing.')
+      return
+    }
+    if (step === 1 && (!mood || !era)) {
+      setError('Pick a mood and an era to continue.')
+      return
+    }
+    setStep(s => s + 1)
+  }
+
+  function goBack() {
+    setError(null)
+    if (audioMode !== 'choose') {
+      setAudioMode('choose')
+      setAudioBlob(null)
+      setAudioUrl(null)
+    } else {
+      setStep(s => s - 1)
+    }
   }
 
   async function startRecording() {
@@ -87,7 +114,7 @@ export default function StoryModal({ currentUser, editingStory, profiles, getAva
       mediaRecorderRef.current = recorder
       setRecording(true)
     } catch {
-      setError('Microphone access denied.')
+      setError('Microphone access was denied. Try uploading a file instead.')
     }
   }
 
@@ -104,8 +131,10 @@ export default function StoryModal({ currentUser, editingStory, profiles, getAva
   }
 
   async function handleSave() {
-    if (!title.trim()) return setError('Please add a title.')
-    if (!audioBlob && !editingStory) return setError('Please record or upload audio.')
+    if (!audioBlob && !editingStory) {
+      setError('Please record or upload your story audio.')
+      return
+    }
     setSaving(true)
     setError(null)
 
@@ -152,7 +181,6 @@ export default function StoryModal({ currentUser, editingStory, profiles, getAva
         storyId = data.id
       }
 
-      // Sync story_people
       await supabase.from('story_people').delete().eq('story_id', storyId)
       if (selectedPeople.length > 0) {
         await supabase.from('story_people').insert(
@@ -162,7 +190,7 @@ export default function StoryModal({ currentUser, editingStory, profiles, getAva
 
       onSave()
     } catch (e: any) {
-      setError(e.message ?? 'Something went wrong.')
+      setError(e.message ?? 'Something went wrong. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -170,172 +198,261 @@ export default function StoryModal({ currentUser, editingStory, profiles, getAva
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900">
-            {editingStory ? 'Edit Story' : 'Share a Story'}
-          </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
-        </div>
+      <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto">
 
-        {/* Title */}
-        <div>
-          <label className="text-xs font-medium text-gray-600 block mb-1">Title</label>
-          <input
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="e.g. The time Dad got lost in IKEA"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
-        </div>
-
-        {/* Mood */}
-        <div>
-          <label className="text-xs font-medium text-gray-600 block mb-2">Mood</label>
-          <div className="flex gap-2 flex-wrap">
-            {MOODS.map(m => (
-              <button
-                key={m.key}
-                onClick={() => setMood(m.key)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
-                  ${mood === m.key
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-              >
-                {m.label}
-              </button>
-            ))}
+        {/* Step indicator */}
+        <div className="px-6 pt-5 pb-4 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-gray-900">
+              {editingStory ? 'Edit Story' : 'Share a Story'}
+            </h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
           </div>
-        </div>
 
-        {/* Era */}
-        <div>
-          <label className="text-xs font-medium text-gray-600 block mb-2">Era</label>
-          <div className="flex gap-2 flex-wrap">
-            {ERAS.map(e => (
-              <button
-                key={e.key}
-                onClick={() => setEra(e.key)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
-                  ${era === e.key
-                    ? 'bg-amber-500 text-white border-amber-500'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-              >
-                {e.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* People */}
-        <div>
-          <label className="text-xs font-medium text-gray-600 block mb-2">Who's in this story?</label>
-          <div className="flex gap-2 flex-wrap">
-            {profiles.map(p => (
-              <button
-                key={p.email}
-                onClick={() => togglePerson(p.email)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
-                  ${selectedPeople.includes(p.email)
-                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-              >
-                <img
-                  src={getAvatarUrl(p.full_name)}
-                  alt={p.first_name}
-                  className="w-4 h-4 rounded-full object-cover"
-                />
-                {p.first_name}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Audio */}
-        <div>
-          <label className="text-xs font-medium text-gray-600 block mb-2">
-            {editingStory ? 'Re-record (optional)' : 'Record your story'}
-          </label>
-
-          {mode === 'choose' && (
-            <div className="flex gap-3">
-              <button
-                onClick={() => setMode('record')}
-                className="flex-1 border-2 border-dashed border-gray-200 rounded-xl py-4 text-center hover:border-indigo-300 transition-colors"
-              >
-                <div className="text-2xl mb-1">🎙️</div>
-                <div className="text-xs font-medium text-gray-600">Record</div>
-              </button>
-              <button
-                onClick={() => setMode('upload')}
-                className="flex-1 border-2 border-dashed border-gray-200 rounded-xl py-4 text-center hover:border-indigo-300 transition-colors"
-              >
-                <div className="text-2xl mb-1">📁</div>
-                <div className="text-xs font-medium text-gray-600">Upload file</div>
-              </button>
-            </div>
-          )}
-
-          {mode === 'record' && (
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                {!recording ? (
-                  <button
-                    onClick={startRecording}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 text-sm font-medium transition-colors"
-                  >
-                    ● Start Recording
-                  </button>
-                ) : (
-                  <button
-                    onClick={stopRecording}
-                    className="flex-1 bg-gray-800 text-white rounded-lg py-2 text-sm font-medium animate-pulse"
-                  >
-                    ■ Stop
-                  </button>
-                )}
-                <button
-                  onClick={() => { setMode('choose'); setAudioBlob(null); setAudioUrl(null) }}
-                  className="px-3 py-2 text-xs text-gray-400 hover:text-gray-600"
-                >
-                  Back
-                </button>
+          {/* Step pills */}
+          <div className="flex gap-1">
+            {STEPS.map((label, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                <div className={`h-1.5 w-full rounded-full transition-colors ${
+                  i < step ? 'bg-indigo-600' : i === step ? 'bg-indigo-400' : 'bg-gray-200'
+                }`} />
+                <span className={`text-[10px] font-medium ${
+                  i === step ? 'text-indigo-600' : i < step ? 'text-gray-400' : 'text-gray-300'
+                }`}>
+                  {label}
+                </span>
               </div>
-              {audioUrl && <audio src={audioUrl} controls className="w-full h-8" />}
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
 
-          {mode === 'upload' && (
-            <div className="space-y-3">
-              <div className="flex gap-2 items-center">
+        <div className="p-6 space-y-5">
+
+          {/* ── Step 0: Name it ── */}
+          {step === 0 && (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  What's the story called?
+                </label>
                 <input
-                  type="file"
-                  accept="audio/*"
-                  onChange={handleFileUpload}
-                  aria-label="Upload audio file"
-                  className="text-sm text-gray-600 flex-1"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  placeholder="e.g. The time Dad got lost in IKEA"
+                  autoFocus
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-                <button
-                  onClick={() => { setMode('choose'); setAudioBlob(null); setAudioUrl(null) }}
-                  className="px-3 py-2 text-xs text-gray-400 hover:text-gray-600"
-                >
-                  Back
-                </button>
               </div>
-              {audioUrl && <audio src={audioUrl} controls className="w-full h-8" />}
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Who's in this story? <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <div className="flex gap-2 flex-wrap">
+                  {profiles.map(p => (
+                    <button
+                      key={p.email}
+                      onClick={() => togglePerson(p.email)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-colors
+                        ${selectedPeople.includes(p.email)
+                          ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <img
+                        src={getAvatarUrl(p.full_name)}
+                        alt={p.first_name}
+                        className="w-6 h-6 rounded-full object-cover"
+                      />
+                      {p.first_name}
+                      {selectedPeople.includes(p.email) && <span className="text-indigo-500">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── Step 1: Tag it ── */}
+          {step === 1 && (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  What's the vibe?
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {MOODS.map(m => (
+                    <button
+                      key={m.key}
+                      onClick={() => setMood(m.key)}
+                      className={`py-3 rounded-xl text-sm font-medium border-2 transition-colors
+                        ${mood === m.key
+                          ? 'bg-indigo-50 border-indigo-400 text-indigo-700'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  When did this happen?
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {ERAS.map(e => (
+                    <button
+                      key={e.key}
+                      onClick={() => setEra(e.key)}
+                      className={`py-3 rounded-xl text-sm font-medium border-2 transition-colors
+                        ${era === e.key
+                          ? 'bg-amber-50 border-amber-400 text-amber-700'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── Step 2: Record it ── */}
+          {step === 2 && (
+            <div className="space-y-4">
+              {editingStory && !audioBlob && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
+                  You have an existing recording. Record or upload a new one to replace it, or skip to save without changing it.
+                </div>
+              )}
+
+              {audioMode === 'choose' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setAudioMode('record')}
+                    className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl py-6 transition-colors"
+                  >
+                    <span className="text-3xl">🎙️</span>
+                    <span className="text-sm font-semibold text-gray-700">Record now</span>
+                    <span className="text-xs text-gray-400">Use your mic</span>
+                  </button>
+                  <button
+                    onClick={() => setAudioMode('upload')}
+                    className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl py-6 transition-colors"
+                  >
+                    <span className="text-3xl">📁</span>
+                    <span className="text-sm font-semibold text-gray-700">Upload a file</span>
+                    <span className="text-xs text-gray-400">MP3, M4A, WAV…</span>
+                  </button>
+                </div>
+              )}
+
+              {audioMode === 'record' && (
+                <div className="space-y-3">
+                  {!audioBlob ? (
+                    !recording ? (
+                      <button
+                        onClick={startRecording}
+                        className="w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white rounded-xl py-4 text-sm font-semibold transition-colors"
+                      >
+                        <span className="w-3 h-3 rounded-full bg-white inline-block" />
+                        Tap to start recording
+                      </button>
+                    ) : (
+                      <button
+                        onClick={stopRecording}
+                        className="w-full flex items-center justify-center gap-2 bg-gray-900 text-white rounded-xl py-4 text-sm font-semibold animate-pulse"
+                      >
+                        <span className="w-3 h-3 rounded-sm bg-white inline-block" />
+                        Recording… tap to stop
+                      </button>
+                    )
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
+                        <span>✓</span> Recording ready
+                      </div>
+                      <audio src={audioUrl ?? ''} controls className="w-full" />
+                      <button
+                        onClick={() => { setAudioBlob(null); setAudioUrl(null) }}
+                        className="text-xs text-gray-400 hover:text-gray-600"
+                      >
+                        Re-record
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {audioMode === 'upload' && (
+                <div className="space-y-3">
+                  {!audioBlob ? (
+                    <label className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-200 hover:border-indigo-300 rounded-2xl py-6 cursor-pointer transition-colors">
+                      <span className="text-3xl">📂</span>
+                      <span className="text-sm font-semibold text-gray-700">Choose audio file</span>
+                      <span className="text-xs text-gray-400">MP3, M4A, WAV, WEBM</span>
+                      <input
+                        type="file"
+                        accept="audio/*"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
+                        <span>✓</span> File ready
+                      </div>
+                      <audio src={audioUrl ?? ''} controls className="w-full" />
+                      <button
+                        onClick={() => { setAudioBlob(null); setAudioUrl(null) }}
+                        className="text-xs text-gray-400 hover:text-gray-600"
+                      >
+                        Choose a different file
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
+
+          {error && (
+            <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
+
+          {/* Navigation buttons */}
+          <div className="flex gap-3 pt-1">
+            {(step > 0 || audioMode !== 'choose') && (
+              <button
+                onClick={goBack}
+                className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                Back
+              </button>
+            )}
+
+            {step < 2 ? (
+              <button
+                onClick={goNext}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
+              >
+                Continue →
+              </button>
+            ) : (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
+              >
+                {saving ? 'Saving…' : editingStory ? 'Save Changes' : '🎉 Share Story'}
+              </button>
+            )}
+          </div>
+
         </div>
-
-        {error && <p className="text-xs text-red-500">{error}</p>}
-
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
-        >
-          {saving ? 'Saving...' : editingStory ? 'Save Changes' : 'Share Story'}
-        </button>
       </div>
     </div>
   )

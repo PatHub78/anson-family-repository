@@ -38,12 +38,13 @@ type Props = {
   story: Story
   profiles: Profile[]
   getAvatarUrl: (fullName: string) => string
+  currentUserEmail: string
   isOwner: boolean
   onDelete: (id: string, audioUrl: string) => void
   onReRecord: (story: Story) => void
 }
 
-export default function StoryCard({ story, profiles, getAvatarUrl, isOwner, onDelete, onReRecord }: Props) {
+export default function StoryCard({ story, profiles, getAvatarUrl, currentUserEmail, isOwner, onDelete, onReRecord }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -86,8 +87,9 @@ export default function StoryCard({ story, profiles, getAvatarUrl, isOwner, onDe
     story.story_people.some(sp => sp.profile_email === p.email)
   )
 
-  // Find poster profile by matching story_people or fall back to first person
-  const posterProfile = profiles.find(p => p.email === story.poster_email)
+  // Use poster_email from DB if present; fall back to current user if they own the story
+  const posterEmail = story.poster_email ?? (isOwner ? currentUserEmail : undefined)
+  const posterProfile = posterEmail ? profiles.find(p => p.email === posterEmail) : undefined
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4">

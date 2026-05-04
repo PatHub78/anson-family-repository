@@ -13,17 +13,14 @@ const marker = Permanent_Marker({
 });
 
 const NAV_ITEMS = [
-  { href: "/dashboard",          icon: "📊", label: "Dashboard" },
-  { href: "/submit",             icon: "✏️", label: "Submit" },
-  { href: "/ketchup",            icon: "🌍", label: "Ketchup" },
-  { href: "/stories",           icon: "💭", label: "Memory Lane" },
-  { href: "/album",              icon: "📷", label: "Anson Album" },
-  { href: "/streakers",          icon: "🔥", label: "Streakers" },
-  { href: "/weekly-challenges",  icon: "🏁", label: "Race Me!" },
-  { href: "/recommendations",   icon: "👍", label: "Recommendations" },
-  { href: "/word-play",         icon: "🔡", label: "WordSmith" },
-  { href: "/jokes",              icon: "🎤", label: "You Got Jokes?" },
-  { href: "/about",             icon: "🌳", label: "Winnie & Frank" },
+  { href: "/dashboard",        icon: "📊", label: "Dashboard" },
+  { href: "/submit",           icon: "✏️", label: "Submit" },
+  { href: "/ketchup",          icon: "🌍", label: "Ketchup" },
+  { href: "/stories",          icon: "💭", label: "Memory Lane" },
+  { href: "/album",            icon: "📷", label: "Anson Album" },
+  { href: "/chess",            icon: "♟", label: "Chess" },
+  { href: "/recommendations",  icon: "👍", label: "Recommendations" },
+  { href: "/about",            icon: "🌳", label: "Winnie & Frank" },
 ]
 
 // First 4 go in the mobile bottom bar, rest in "More"

@@ -12,19 +12,17 @@ const supabase = createClient(
 )
 
 const MOODS = [
-  { key: 'all', label: 'All Moods' },
-  { key: 'funny', label: '😄 Funny' },
-  { key: 'nostalgic', label: '🌅 Nostalgic' },
+  { key: 'funny',        label: '😄 Funny' },
+  { key: 'nostalgic',   label: '🌅 Nostalgic' },
   { key: 'heartwarming', label: '🥰 Heartwarming' },
   { key: 'bittersweet', label: '🍂 Bittersweet' },
 ]
 
 const ERAS = [
-  { key: 'all', label: 'All Eras' },
   { key: 'childhood', label: '🧸 Childhood' },
   { key: 'teen_years', label: '🎒 Teen Years' },
-  { key: 'adult', label: '🏠 Adult' },
-  { key: 'recent', label: '📅 Recent' },
+  { key: 'adult',     label: '🏠 Adult' },
+  { key: 'recent',    label: '📅 Recent' },
 ]
 
 function getAvatarUrl(fullName: string) {
@@ -54,9 +52,10 @@ export default function StoriesPage() {
   const [stories, setStories] = useState<Story[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [activeMood, setActiveMood] = useState('all')
-  const [activeEra, setActiveEra] = useState('all')
+  const [activeMood, setActiveMood] = useState<string | null>(null)
+  const [activeEra, setActiveEra] = useState<string | null>(null)
   const [activePeople, setActivePeople] = useState<string[]>([])
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editingStory, setEditingStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
@@ -85,15 +84,10 @@ export default function StoriesPage() {
     setLoading(false)
   }
 
-  // Find a profile by matching their email to the story's user auth email
-  function getPosterProfile(story: Story): Profile | undefined {
-    return profiles.find(p => p.email === currentUser?.email)
-  }
-
   function getFiltered() {
     return stories.filter(s => {
-      const moodMatch = activeMood === 'all' || s.mood === activeMood
-      const eraMatch = activeEra === 'all' || s.era === activeEra
+      const moodMatch = !activeMood || s.mood === activeMood
+      const eraMatch = !activeEra || s.era === activeEra
       const peopleMatch =
         activePeople.length === 0 ||
         activePeople.every(email =>
@@ -108,6 +102,14 @@ export default function StoriesPage() {
       prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]
     )
   }
+
+  function clearFilters() {
+    setActiveMood(null)
+    setActiveEra(null)
+    setActivePeople([])
+  }
+
+  const hasActiveFilters = activeMood || activeEra || activePeople.length > 0
 
   async function handleDelete(id: string, audioUrl: string) {
     const path = audioUrl.split('/story-audio/')[1]
@@ -132,91 +134,178 @@ export default function StoriesPage() {
   return (
     <AuthGuard>
       <div className="min-h-screen bg-gray-50 pb-24">
+
         {/* Header */}
         <div className="bg-white border-b px-6 py-5 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">📖 Stories</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Family memories, one recording at a time</p>
+            <h1 className="text-2xl font-bold text-gray-900">📖 Memory Lane</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Family stories, preserved forever</p>
           </div>
           <button
             onClick={() => { setEditingStory(null); setShowModal(true) }}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
           >
-            <span className="text-lg">+</span> Share a Story
+            <span className="text-base">🎙️</span> Record a Story
           </button>
         </div>
 
-        {/* Mood filter */}
-        <div className="bg-white border-b px-6 overflow-x-auto">
-          <div className="flex gap-1 py-2 min-w-max">
-            {MOODS.map(m => (
-              <button
-                key={m.key}
-                onClick={() => setActiveMood(m.key)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap
-                  ${activeMood === m.key
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Filter bar */}
+        <div className="bg-white border-b px-6 py-3 flex items-center gap-3">
+          <button
+            onClick={() => setFiltersOpen(prev => !prev)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+              ${filtersOpen || hasActiveFilters
+                ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          >
+            <span>🔍</span>
+            Filters
+            {hasActiveFilters && (
+              <span className="ml-1 w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-bold">
+                {(activeMood ? 1 : 0) + (activeEra ? 1 : 0) + activePeople.length}
+              </span>
+            )}
+          </button>
 
-        {/* Era filter */}
-        <div className="bg-white border-b px-6 overflow-x-auto">
-          <div className="flex gap-1 py-2 min-w-max">
-            {ERAS.map(e => (
-              <button
-                key={e.key}
-                onClick={() => setActiveEra(e.key)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap
-                  ${activeEra === e.key
-                    ? 'bg-amber-500 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                {e.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* People filter */}
-        <div className="bg-white border-b px-6 py-3 flex gap-2 overflow-x-auto">
-          {profiles.map(p => (
+          {hasActiveFilters && (
             <button
-              key={p.email}
-              onClick={() => togglePerson(p.email)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors
-                ${activePeople.includes(p.email)
-                  ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                  : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+              onClick={clearFilters}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
             >
-              <img
-                src={getAvatarUrl(p.full_name)}
-                alt={p.first_name}
-                className="w-4 h-4 rounded-full object-cover"
-              />
-              {p.first_name}
-            </button>
-          ))}
-          {activePeople.length > 0 && (
-            <button
-              onClick={() => setActivePeople([])}
-              className="px-3 py-1 rounded-full text-xs text-gray-400 border border-gray-200 hover:bg-gray-50"
-            >
-              Clear
+              Clear all
             </button>
           )}
+
+          {/* Active filter chips */}
+          <div className="flex gap-2 overflow-x-auto">
+            {activeMood && (
+              <span className="flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-medium whitespace-nowrap">
+                {MOODS.find(m => m.key === activeMood)?.label}
+                <button onClick={() => setActiveMood(null)} className="hover:text-indigo-900 ml-0.5">×</button>
+              </span>
+            )}
+            {activeEra && (
+              <span className="flex items-center gap-1 px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium whitespace-nowrap">
+                {ERAS.find(e => e.key === activeEra)?.label}
+                <button onClick={() => setActiveEra(null)} className="hover:text-amber-900 ml-0.5">×</button>
+              </span>
+            )}
+            {activePeople.map(email => {
+              const p = profiles.find(pr => pr.email === email)
+              return p ? (
+                <span key={email} className="flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-medium whitespace-nowrap">
+                  <img src={getAvatarUrl(p.full_name)} alt={p.first_name} className="w-3.5 h-3.5 rounded-full object-cover" />
+                  {p.first_name}
+                  <button onClick={() => togglePerson(email)} className="hover:text-gray-900 ml-0.5">×</button>
+                </span>
+              ) : null
+            })}
+          </div>
         </div>
+
+        {/* Expanded filter panel */}
+        {filtersOpen && (
+          <div className="bg-white border-b px-6 py-4 space-y-4">
+            {/* Mood */}
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Mood</p>
+              <div className="flex gap-2 flex-wrap">
+                {MOODS.map(m => (
+                  <button
+                    key={m.key}
+                    onClick={() => setActiveMood(activeMood === m.key ? null : m.key)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      ${activeMood === m.key
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Era */}
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Era</p>
+              <div className="flex gap-2 flex-wrap">
+                {ERAS.map(e => (
+                  <button
+                    key={e.key}
+                    onClick={() => setActiveEra(activeEra === e.key ? null : e.key)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      ${activeEra === e.key
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {e.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* People */}
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Who's in it</p>
+              <div className="flex gap-2 flex-wrap">
+                {profiles.map(p => (
+                  <button
+                    key={p.email}
+                    onClick={() => togglePerson(p.email)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      ${activePeople.includes(p.email)
+                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    <img src={getAvatarUrl(p.full_name)} alt={p.first_name} className="w-5 h-5 rounded-full object-cover" />
+                    {p.first_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setFiltersOpen(false)}
+              className="text-sm text-indigo-600 font-medium hover:text-indigo-700"
+            >
+              Done
+            </button>
+          </div>
+        )}
 
         {/* Stories feed */}
         <div className="px-6 py-6 space-y-4 max-w-2xl mx-auto">
           {loading ? (
-            <p className="text-gray-400 text-sm">Loading stories...</p>
+            <div className="text-center py-16">
+              <p className="text-gray-400 text-sm">Loading stories...</p>
+            </div>
+          ) : stories.length === 0 ? (
+            /* Empty state — no stories at all */
+            <div className="text-center py-16 px-4">
+              <div className="text-5xl mb-4">🎙️</div>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">No stories yet</h2>
+              <p className="text-gray-500 text-sm mb-6 max-w-xs mx-auto">
+                Be the first to record a family memory. It only takes a minute.
+              </p>
+              <button
+                onClick={() => { setEditingStory(null); setShowModal(true) }}
+                className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors shadow-sm"
+              >
+                🎙️ Record the first story
+              </button>
+            </div>
           ) : filtered.length === 0 ? (
-            <p className="text-gray-400 text-sm">No stories match your filters — try broadening them.</p>
+            /* Empty state — filters too narrow */
+            <div className="text-center py-16 px-4">
+              <div className="text-4xl mb-3">🔍</div>
+              <p className="text-gray-500 text-sm">No stories match those filters.</p>
+              <button
+                onClick={clearFilters}
+                className="mt-3 text-indigo-600 text-sm font-medium hover:text-indigo-700"
+              >
+                Clear filters
+              </button>
+            </div>
           ) : (
             filtered.map(story => (
               <StoryCard
@@ -224,6 +313,7 @@ export default function StoriesPage() {
                 story={story}
                 profiles={profiles}
                 getAvatarUrl={getAvatarUrl}
+                currentUserEmail={currentUser?.email ?? ''}
                 isOwner={story.user_id === currentUser?.id}
                 onDelete={handleDelete}
                 onReRecord={handleReRecord}
@@ -231,14 +321,6 @@ export default function StoriesPage() {
             ))
           )}
         </div>
-
-        {/* FAB */}
-        <button
-          onClick={() => { setEditingStory(null); setShowModal(true) }}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg flex items-center justify-center text-2xl transition-colors"
-        >
-          +
-        </button>
 
         {showModal && currentUser && (
           <StoryModal
