@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import AuthGuard from '@/app/components/AuthGuard'
 import StoryCard from '../components/stories/StoryCard'
 import StoryModal from '../components/stories/StoryModal'
+import StoryWizard from '../components/stories/StoryWizard'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,6 +57,7 @@ export default function StoriesPage() {
   const [activeEra, setActiveEra] = useState<string | null>(null)
   const [activePeople, setActivePeople] = useState<string[]>([])
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [showWizard, setShowWizard] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editingStory, setEditingStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
@@ -142,7 +144,7 @@ export default function StoriesPage() {
             <p className="text-sm text-gray-500 mt-0.5">Family stories, preserved forever</p>
           </div>
           <button
-            onClick={() => { setEditingStory(null); setShowModal(true) }}
+            onClick={() => setShowWizard(true)}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
           >
             <span className="text-base">🎙️</span> Record a Story
@@ -288,7 +290,7 @@ export default function StoriesPage() {
                 Be the first to record a family memory. It only takes a minute.
               </p>
               <button
-                onClick={() => { setEditingStory(null); setShowModal(true) }}
+                onClick={() => setShowWizard(true)}
                 className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors shadow-sm"
               >
                 🎙️ Record the first story
@@ -322,6 +324,18 @@ export default function StoriesPage() {
           )}
         </div>
 
+        {/* Wizard — new story */}
+        {showWizard && currentUser && (
+          <StoryWizard
+            currentUser={currentUser}
+            profiles={profiles}
+            getAvatarUrl={getAvatarUrl}
+            onSave={() => { setShowWizard(false); fetchAll() }}
+            onClose={() => setShowWizard(false)}
+          />
+        )}
+
+        {/* Modal — edit / re-record existing story */}
         {showModal && currentUser && (
           <StoryModal
             currentUser={currentUser}
