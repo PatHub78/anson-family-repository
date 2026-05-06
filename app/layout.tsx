@@ -62,6 +62,14 @@ function BottomBarItem({ href, icon, label }: { href: string; icon: string; labe
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false)
 
+  // Register service worker so Chrome treats this as a real installable PWA
+  // (not just a browser shortcut)
+  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {})
+    })
+  }
+
   return (
     <html lang="en" className={marker.variable}>
       <head>
