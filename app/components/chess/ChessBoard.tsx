@@ -12,12 +12,12 @@ const PIECE_IMG: Record<string, string> = {
 }
 
 // Chess.com colour palette
-const SQ_LIGHT        = '#EEEED2'
-const SQ_DARK         = '#769656'
-const SQ_LIGHT_HL     = '#F6F669'   // selected / last-move on a light square
-const SQ_DARK_HL      = '#BACA2B'   // selected / last-move on a dark square
-const SQ_LIGHT_CHECK  = '#FF6B6B'
-const SQ_DARK_CHECK   = '#CC3333'
+const SQ_LIGHT       = '#EEEED2'
+const SQ_DARK        = '#769656'
+const SQ_LIGHT_HL    = '#F6F669'   // selected / last-move / pending on light square
+const SQ_DARK_HL     = '#BACA2B'   // selected / last-move / pending on dark square
+const SQ_LIGHT_CHECK = '#FF6B6B'
+const SQ_DARK_CHECK  = '#CC3333'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 const RANKS = ['8', '7', '6', '5', '4', '3', '2', '1']
@@ -39,13 +39,23 @@ function squareIsLight(file: string, rank: string) {
 }
 
 export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMove }: Props) {
-  const [selected, setSelected]         = useState<string | null>(null)
-  const [legalTargets, setLegalTargets] = useState<string[]>([])
-  const [promoSquare, setPromoSquare]   = useState<string | null>(null)
-  const [pendingFrom, setPendingFrom]   = useState<string | null>(null)
+  const [selected,      setSelected]      = useState<string | null>(null)
+  const [legalTargets,  setLegalTargets]  = useState<string[]>([])
+  const [pendingMove,   setPendingMove]   = useState<{ from: string; to: string } | null>(null)
+  const [promoSquare,   setPromoSquare]   = useState<string | null>(null)
+  const [pendingFrom,   setPendingFrom]   = useState<string | null>(null)
 
-  const chess  = new Chess(fen)
-  const board  = chess.board()
+  // ── Chess instances ──────────────────────────────────────────────────────────
+  // `chess`        = real position (for move validation, turn checks)
+  // `displayChess` = what we render (previews pending move visually)
+  const chess = new Chess(fen)
+
+  let displayChess = new Chess(fen)
+  if (pendingMove) {
+    try { displayChess.move({ from: pendingMove.from as any, to: pendingMove.to as any }) } catch {}
+  }
+
+  const board = displayChess.board()
 
   // Flip board so current player's pieces are at bottom
   const ranks = playerColor === 'b' ? [...RANKS].reverse() : RANKS
@@ -59,37 +69,46 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
 
   function squareBg(sq: string, file: string, rank: string): string {
     const light = squareIsLight(file, rank)
-    const isHL  = selected === sq || lastMove?.from === sq || lastMove?.to === sq
 
-    // King-in-check highlight
-    const piece = chess.get(sq as any)
-    if (chess.inCheck() && piece?.type === 'k' && piece.color === chess.turn()) {
+    // King-in-check: use displayChess (shows check in pending position too)
+    const piece = displayChess.get(sq as any)
+    if (displayChess.inCheck() && piece?.type === 'k' && piece.color === displayChess.turn()) {
       return light ? SQ_LIGHT_CHECK : SQ_DARK_CHECK
     }
-    if (isHL) return light ? SQ_LIGHT_HL : SQ_DARK_HL
+
+    // Highlight priority: selected > pending from/to > last move
+    const isSelected = selected === sq
+    const isPending   = pendingMove ? (pendingMove.from === sq || pendingMove.to === sq) : false
+    const isLastMove  = !pendingMove && (lastMove?.from === sq || lastMove?.to === sq)
+
+    if (isSelected || isPending || isLastMove) return light ? SQ_LIGHT_HL : SQ_DARK_HL
     return light ? SQ_LIGHT : SQ_DARK
   }
 
   function handleClick(sq: string) {
-    if (disabled || promoSquare) return
+    // Block clicks while a move is pending confirmation or promo picker is open
+    if (disabled || promoSquare || pendingMove) return
     if (chess.turn() !== playerColor) return
 
     // Deselect
     if (selected === sq) { setSelected(null); setLegalTargets([]); return }
 
-    // Execute move
+    // A legal destination was clicked → stage it for confirmation
     if (selected && legalTargets.includes(sq)) {
-      const piece  = chess.get(selected as any)
-      const toRank = sq[1]
+      const piece   = chess.get(selected as any)
+      const toRank  = sq[1]
       const isPawnPromo =
         piece?.type === 'p' &&
         ((playerColor === 'w' && toRank === '8') || (playerColor === 'b' && toRank === '1'))
 
       if (isPawnPromo) {
+        // Promotion still uses the picker (it IS the confirmation step)
         setPendingFrom(selected); setPromoSquare(sq)
         setSelected(null); setLegalTargets([])
       } else {
-        applyMove(selected, sq)
+        // Stage move — visually preview, wait for confirm
+        setPendingMove({ from: selected, to: sq })
+        setSelected(null); setLegalTargets([])
       }
       return
     }
@@ -105,12 +124,29 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
     }
   }
 
+  // ── Confirm pending move ────────────────────────────────────────────────────
+  function confirmMove() {
+    if (!pendingMove) return
+    const tmp = new Chess(fen)
+    try {
+      const result = tmp.move({ from: pendingMove.from as any, to: pendingMove.to as any })
+      if (result) onMove(result.san, tmp.fen(), pendingMove.from, pendingMove.to)
+    } catch {}
+    setPendingMove(null)
+  }
+
+  function cancelMove() {
+    setPendingMove(null)
+  }
+
+  // ── Promotion ───────────────────────────────────────────────────────────────
   function applyMove(from: string, to: string, promotion?: PromoPiece) {
     try {
-      const result = chess.move({ from: from as any, to: to as any, promotion })
+      const tmp    = new Chess(fen)
+      const result = tmp.move({ from: from as any, to: to as any, promotion })
       if (result) {
         setSelected(null); setLegalTargets([])
-        onMove(result.san, chess.fen(), from, to)
+        onMove(result.san, tmp.fen(), from, to)
       }
     } catch {
       setSelected(null); setLegalTargets([])
@@ -122,8 +158,7 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
     setPendingFrom(null); setPromoSquare(null)
   }
 
-  // Squares shrink to fit viewport on mobile, cap at 56px on desktop.
-  // 100vw minus page padding (32px) minus rank-label column (18px), divided by 8 squares.
+  // Squares shrink to fit viewport on mobile, cap at 56 px on desktop.
   const sqStyle = {
     width:  'min(56px, calc((100vw - 50px) / 8))',
     height: 'min(56px, calc((100vw - 50px) / 8))',
@@ -131,6 +166,7 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
 
   return (
     <div className="select-none inline-block">
+
       {/* Promotion picker */}
       {promoSquare && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -152,7 +188,7 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
       <div className="rounded-sm overflow-hidden" style={{ boxShadow: '0 4px 28px rgba(0,0,0,0.4)' }}>
         {ranks.map(rank => (
           <div key={rank} className="flex">
-            {/* Rank label — sits inside the first square, top-left */}
+            {/* Rank label */}
             <div style={{ width: 18, flexShrink: 0, background: squareBg(`a${rank}`, playerColor === 'b' ? 'h' : 'a', rank), position: 'relative' }}>
               <span style={{
                 position: 'absolute', top: 2, left: 3,
@@ -162,12 +198,12 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
               }}>{rank}</span>
             </div>
 
-            {files.map((file, fi) => {
-              const sq      = file + rank
-              const piece   = getPiece(file, rank)
+            {files.map((file) => {
+              const sq       = file + rank
+              const piece    = getPiece(file, rank)
               const isTarget = legalTargets.includes(sq)
-              const bg      = squareBg(sq, file, rank)
-              const light   = squareIsLight(file, rank)
+              const bg       = squareBg(sq, file, rank)
+              const light    = squareIsLight(file, rank)
 
               return (
                 <button key={sq} onClick={() => handleClick(sq)}
@@ -184,13 +220,13 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
                     }}>{file}</span>
                   )}
 
-                  {/* Legal move indicator */}
+                  {/* Legal move dot / ring */}
                   {isTarget && !piece && (
                     <div className="rounded-full pointer-events-none"
                       style={{ width: 18, height: 18, background: 'rgba(0,0,0,0.22)' }} />
                   )}
                   {isTarget && piece && (
-                    <div className="absolute inset-0 pointer-events-none rounded-full"
+                    <div className="absolute inset-0 pointer-events-none"
                       style={{ boxShadow: 'inset 0 0 0 4px rgba(0,0,0,0.3)' }} />
                   )}
 
@@ -210,6 +246,27 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
           </div>
         ))}
       </div>
+
+      {/* ── Confirm / Cancel buttons ── */}
+      {pendingMove && (
+        <div className="flex gap-3 justify-center mt-3">
+          <button
+            onClick={cancelMove}
+            title="Cancel move"
+            className="w-12 h-12 rounded-full bg-white border-2 border-gray-300 hover:border-red-400 hover:bg-red-50 text-gray-600 hover:text-red-600 text-xl font-bold flex items-center justify-center shadow-md transition-all"
+          >
+            ✕
+          </button>
+          <button
+            onClick={confirmMove}
+            title="Confirm move"
+            className="w-12 h-12 rounded-full bg-[#769656] hover:bg-[#5a7a3a] text-white text-xl font-bold flex items-center justify-center shadow-md transition-all"
+          >
+            ✓
+          </button>
+        </div>
+      )}
+
     </div>
   )
 }
