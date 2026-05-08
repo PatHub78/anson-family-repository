@@ -247,23 +247,35 @@ export default function ChessBoard({ fen, playerColor, lastMove, disabled, onMov
         ))}
       </div>
 
-      {/* ── Confirm / Cancel buttons ── */}
+      {/* ── Confirm / Cancel bar ── */}
       {pendingMove && (
-        <div className="flex gap-3 justify-center mt-3">
-          <button
-            onClick={cancelMove}
-            title="Cancel move"
-            className="w-12 h-12 rounded-full bg-white border-2 border-gray-300 hover:border-red-400 hover:bg-red-50 text-gray-600 hover:text-red-600 text-xl font-bold flex items-center justify-center shadow-md transition-all"
-          >
-            ✕
-          </button>
-          <button
-            onClick={confirmMove}
-            title="Confirm move"
-            className="w-12 h-12 rounded-full bg-[#769656] hover:bg-[#5a7a3a] text-white text-xl font-bold flex items-center justify-center shadow-md transition-all"
-          >
-            ✓
-          </button>
+        <div className="mt-2 rounded-xl overflow-hidden shadow-lg"
+          style={{ background: '#1a1a1a', border: '2px solid #769656' }}>
+          <p className="text-center text-xs font-semibold py-1.5"
+            style={{ color: '#BACA2B', letterSpacing: '0.05em' }}>
+            CONFIRM YOUR MOVE?
+          </p>
+          <div className="flex">
+            <button
+              onClick={cancelMove}
+              className="flex-1 flex items-center justify-center gap-2 py-3 font-bold text-sm transition-colors"
+              style={{ background: '#3d1515', color: '#ff6b6b' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#5a1f1f')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#3d1515')}
+            >
+              <span className="text-base">✕</span> Cancel
+            </button>
+            <div style={{ width: 1, background: '#333' }} />
+            <button
+              onClick={confirmMove}
+              className="flex-1 flex items-center justify-center gap-2 py-3 font-bold text-sm transition-colors"
+              style={{ background: '#1a2e12', color: '#BACA2B' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#253d18')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#1a2e12')}
+            >
+              <span className="text-base">✓</span> Confirm
+            </button>
+          </div>
         </div>
       )}
 
