@@ -104,10 +104,31 @@ export default function SubmitPage() {
     return publicUrlData.publicUrl;
   };
 
-  const handleFileChange = (file: File | null) => {
-    setPhotoFile(file);
-    if (!file) { setPhotoPreview(null); return; }
-    setPhotoPreview(URL.createObjectURL(file));
+  const handleFileChange = async (file: File | null) => {
+    if (!file) { setPhotoFile(null); setPhotoPreview(null); return; }
+
+    const isHeic =
+      file.type === 'image/heic' ||
+      file.type === 'image/heif' ||
+      file.name.toLowerCase().endsWith('.heic') ||
+      file.name.toLowerCase().endsWith('.heif');
+
+    if (isHeic) {
+      showToast('Converting photo… one sec 📷');
+      try {
+        const heic2any = (await import('heic2any')).default;
+        const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 }) as Blob;
+        const converted = new File([blob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), { type: 'image/jpeg' });
+        setPhotoFile(converted);
+        setPhotoPreview(URL.createObjectURL(converted));
+      } catch {
+        showToast('Could not convert HEIC — try a JPEG instead');
+        setPhotoFile(null); setPhotoPreview(null);
+      }
+    } else {
+      setPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
