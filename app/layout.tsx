@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/album",      icon: "📷", label: "Anson Album" },
   { href: "/top10",      icon: "🏆", label: "Top 10" },
   { href: "/scrabble",   icon: "🔤", label: "Scrabble" },
+  { href: "/profile",    icon: "👤", label: "Profile" },
   { href: "/about",      icon: "🌳", label: "Winnie & Frank" },
 ]
 
