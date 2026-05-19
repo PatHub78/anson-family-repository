@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: "/stories",    icon: "💭", label: "Memory Lane" },
   { href: "/album",      icon: "📷", label: "Anson Album" },
   { href: "/top10",      icon: "🏆", label: "Top 10" },
+  { href: "/scrabble",   icon: "🔤", label: "Scrabble" },
   { href: "/about",      icon: "🌳", label: "Winnie & Frank" },
 ]
 
