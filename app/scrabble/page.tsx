@@ -130,10 +130,15 @@ export default function ScrabblePage() {
     const { error: pErr } = await supabase
       .from('scrabble_players')
       .insert({ game_id: game.id, user_email: myEmail, rack: drawn, score: 0 })
-    if (pErr) { notify('Could not join'); setBusy(false); return }
+    if (pErr) {
+      notify('Could not join: ' + pErr.message)
+      setBusy(false)
+      return
+    }
     await supabase.from('scrabble_game').update({ bag: remaining, updated_at: new Date().toISOString() }).eq('id', game.id)
     await fetchGame()
     setBusy(false)
+    notify("You're in! Your tiles are at the bottom.")
   }
 
   // ── Leave the game
@@ -364,17 +369,29 @@ export default function ScrabblePage() {
               {game.bag.length} tiles left {game.final_round_started && '· FINAL ROUND'}
             </p>
           </div>
-          {!me && (
-            <button onClick={joinGame} disabled={busy || game.bag.length < 7}
-              className="bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white text-sm font-semibold px-4 py-2 rounded-lg">
-              Join Game
-            </button>
-          )}
           {me && (
             <button onClick={leaveGame} disabled={busy}
               className="text-xs text-red-500 hover:text-red-600 font-medium">Leave</button>
           )}
         </div>
+
+        {/* BIG join CTA — only when you haven't joined yet */}
+        {!me && (
+          <div className="bg-gradient-to-br from-amber-500 to-amber-700 text-white px-6 py-6 text-center shadow-md">
+            <p className="text-sm font-semibold opacity-90 mb-1">You're not playing yet</p>
+            <h2 className="text-2xl font-black mb-3">Tap below to join the game</h2>
+            <button
+              onClick={joinGame}
+              disabled={busy || game.bag.length < 7}
+              className="bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-40 font-black text-lg px-8 py-4 rounded-2xl shadow-lg transition-all active:scale-95"
+            >
+              {busy ? 'Joining…' : '🎲 Join the game'}
+            </button>
+            <p className="text-xs opacity-80 mt-3">
+              You'll get 7 random tiles to play with
+            </p>
+          </div>
+        )}
 
         {/* Scoreboard strip */}
         <div className="bg-white border-b border-amber-200 px-4 py-2 flex gap-3 overflow-x-auto">
@@ -440,12 +457,26 @@ export default function ScrabblePage() {
           </div>
         </div>
 
+        {/* How-to-play hint for first-timers (board is empty + you just joined) */}
+        {me && isBoardEmpty(game.board) && placed.length === 0 && (
+          <div className="mx-4 mb-3 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-900">
+            <p className="font-semibold mb-1">👋 How to play:</p>
+            <ol className="list-decimal list-inside space-y-0.5 text-xs">
+              <li>Tap a letter at the bottom — it lifts up</li>
+              <li>Tap an empty board square to place it</li>
+              <li>Place more letters to spell a word</li>
+              <li>Tap <strong>Submit</strong> to score it</li>
+            </ol>
+            <p className="text-xs mt-2 italic">First word must cover the center pink square ★</p>
+          </div>
+        )}
+
         {/* My rack + actions */}
         {me && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-amber-200 shadow-lg p-3 z-30 max-w-xl mx-auto">
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-amber-300 shadow-lg p-3 z-30 max-w-xl mx-auto">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-                Your rack {isMyTurn ? '· your move' : '· wait your turn'}
+              <p className="text-sm font-bold text-amber-900">
+                🎯 Your tiles {isMyTurn ? '· YOUR MOVE' : '· wait for your turn'}
               </p>
               {placed.length > 0 && (
                 <button onClick={cancelPlacement} className="text-xs text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
