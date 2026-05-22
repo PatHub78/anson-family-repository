@@ -482,36 +482,48 @@ export default function ScrabblePage() {
                 <button onClick={cancelPlacement} className="text-xs text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
               )}
             </div>
-            <div className="flex gap-1.5 items-center">
-              <div className="flex gap-1 flex-1">
-                {me.rack.map((letter, idx) => {
-                  const isUsed = placed.some(p => p.rackIdx === idx)
-                  const isSelected = selectedRackIdx === idx
-                  return (
-                    <button
-                      key={idx}
-                      disabled={isUsed || !isMyTurn}
-                      onClick={() => clickRackTile(idx)}
-                      className={`w-10 h-12 rounded-md flex flex-col items-center justify-center font-black text-amber-950 transition-all shadow-sm ${
-                        isUsed ? 'bg-gray-200 opacity-40' :
-                        isSelected ? 'bg-yellow-400 -translate-y-1 ring-2 ring-amber-600' :
-                        'bg-amber-200 hover:bg-amber-300'
-                      }`}
-                    >
-                      <span className="text-lg leading-none">{letter}</span>
-                      <span className="text-[8px] leading-none mt-0.5">{LETTER_VALUES[letter] ?? 0}</span>
-                    </button>
-                  )
-                })}
+            {me.rack.length === 0 ? (
+              <div className="text-center py-3">
+                <p className="text-sm text-gray-500 mb-2">No tiles loaded — try refreshing the page</p>
+                <button onClick={() => fetchGame()} className="text-xs text-indigo-600 font-semibold">
+                  🔄 Refresh
+                </button>
               </div>
-              <button
-                onClick={submitMove}
-                disabled={busy || !isMyTurn || placed.length === 0}
-                className="bg-amber-600 hover:bg-amber-700 disabled:opacity-30 text-white font-bold px-4 py-3 rounded-xl text-sm shadow-md"
-              >
-                {busy ? '…' : 'Submit'}
-              </button>
-            </div>
+            ) : (
+              <>
+                {/* Tiles row — scrollable horizontally on small screens so they're always visible */}
+                <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
+                  {me.rack.map((letter, idx) => {
+                    const isUsed = placed.some(p => p.rackIdx === idx)
+                    const isSelected = selectedRackIdx === idx
+                    return (
+                      <button
+                        key={idx}
+                        disabled={isUsed || !isMyTurn}
+                        onClick={() => clickRackTile(idx)}
+                        className={`shrink-0 w-11 h-13 rounded-md flex flex-col items-center justify-center font-black text-amber-950 transition-all shadow-sm ${
+                          isUsed ? 'bg-gray-200 opacity-40' :
+                          isSelected ? 'bg-yellow-400 -translate-y-1 ring-2 ring-amber-600' :
+                          'bg-amber-200 hover:bg-amber-300'
+                        }`}
+                        style={{ width: 44, height: 52 }}
+                      >
+                        <span className="text-xl leading-none">{letter}</span>
+                        <span className="text-[9px] leading-none mt-0.5">{LETTER_VALUES[letter] ?? 0}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {/* Submit button on its own line — full width on mobile, always visible */}
+                <button
+                  onClick={submitMove}
+                  disabled={busy || !isMyTurn || placed.length === 0}
+                  className="w-full mt-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-30 text-white font-bold py-3 rounded-xl text-base shadow-md"
+                >
+                  {busy ? 'Saving…' : placed.length === 0 ? (isMyTurn ? 'Place a tile to submit' : 'Not your turn') : `Submit (${placed.length} ${placed.length === 1 ? 'tile' : 'tiles'})`}
+                </button>
+              </>
+            )}
           </div>
         )}
 
