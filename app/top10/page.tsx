@@ -152,12 +152,18 @@ export default function Top10Page() {
   }
 
   // ── Consensus calculation ────────────────────────────────────────────────────
-  // Normalize titles for matching: lowercase + strip apostrophes/quotes so
-  // "Bob's Burgers" and "Bobs Burgers" group together
+  // Normalize titles for matching so small differences in punctuation/casing/
+  // accents don't break grouping. "Bob's Burgers" and "Bobs Burgers" match;
+  // "Café" and "cafe" match; "Star Wars: A New Hope" and "Star Wars" don't.
   function normalizeTitle(s: string): string {
-    return s.toLowerCase()
-      .replace(/[‘’“”'"` ]/g, ' ') // straight + curly quotes/apostrophes → space
-      .replace(/\s+/g, ' ')
+    return s
+      .toLowerCase()
+      .normalize('NFD')                            // decompose accented letters
+      .replace(/[̀-ͯ]/g, '')             // strip the diacritics
+      .replace(/[‘’“”'"`]/g, '') // strip straight + curly quotes/apostrophes
+      .replace(/[-_]/g, ' ')                       // hyphens/underscores → space
+      .replace(/[^a-z0-9\s]/g, '')                 // strip all other punctuation
+      .replace(/\s+/g, ' ')                        // collapse whitespace
       .trim()
   }
 
