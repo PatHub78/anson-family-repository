@@ -152,11 +152,20 @@ export default function Top10Page() {
   }
 
   // ── Consensus calculation ────────────────────────────────────────────────────
+  // Normalize titles for matching: lowercase + strip apostrophes/quotes so
+  // "Bob's Burgers" and "Bobs Burgers" group together
+  function normalizeTitle(s: string): string {
+    return s.toLowerCase()
+      .replace(/[‘’“”'"` ]/g, ' ') // straight + curly quotes/apostrophes → space
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
   function getConsensus() {
     const map: Record<string, { count: number; totalRank: number; emails: string[]; title: string }> = {}
 
     allItems.forEach(item => {
-      const key = item.title.trim().toLowerCase()
+      const key = normalizeTitle(item.title)
       if (!key) return
       const list = allLists.find(l => l.id === item.list_id)
       if (!list) return
@@ -255,7 +264,7 @@ export default function Top10Page() {
         <div className="bg-white border-b px-4 flex">
           {([
             ['mine',      'My List'],
-            ['consensus', '✨ Family Picks'],
+            ['consensus', '✨ Overlap'],
             ['everyone',  "Everyone's"],
           ] as const).map(([v, label]) => (
             <button
@@ -328,7 +337,7 @@ export default function Top10Page() {
             </div>
           )}
 
-          {/* FAMILY PICKS (consensus) */}
+          {/* OVERLAP (consensus) */}
           {view === 'consensus' && (
             loading ? (
               <p className="text-gray-400 text-sm text-center py-12">Loading…</p>
@@ -337,7 +346,7 @@ export default function Top10Page() {
                 <div className="text-4xl mb-3">🤔</div>
                 <p className="text-gray-600 font-semibold text-sm mb-1">No shared favourites yet</p>
                 <p className="text-gray-400 text-xs max-w-xs mx-auto">
-                  Family Picks appear once at least 2 people include the same item on their lists.
+                  Items appear here once at least 2 people include them on their lists. Small spelling differences (like apostrophes) are ignored.
                 </p>
                 <button
                   onClick={() => setView('mine')}
