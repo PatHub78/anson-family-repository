@@ -38,6 +38,7 @@ export default function Top10Page() {
   const [myEmail,      setMyEmail]      = useState('')
   const [profiles,     setProfiles]     = useState<Profile[]>([])
   const [topic,        setTopic]        = useState('movies')
+  const [customTopics, setCustomTopics] = useState<string[]>([])
   const [customInput,  setCustomInput]  = useState('')
   const [showCustom,   setShowCustom]   = useState(false)
   const [view,         setView]         = useState<'mine' | 'consensus' | 'everyone'>('mine')
@@ -52,6 +53,14 @@ export default function Top10Page() {
   const [allItems,     setAllItems]     = useState<ItemRow[]>([])
   const [loading,      setLoading]      = useState(false)
 
+  // ── Fetch all custom topics that exist in the database
+  const fetchCustomTopics = useCallback(async () => {
+    const presetKeys = new Set(PRESET_TOPICS.map(t => t.key))
+    const { data } = await supabase.from('top10_lists').select('topic')
+    const uniq = Array.from(new Set((data ?? []).map(r => r.topic).filter(Boolean)))
+    setCustomTopics(uniq.filter(t => !presetKeys.has(t)).sort())
+  }, [])
+
   // ── Boot ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     async function boot() {
@@ -59,9 +68,10 @@ export default function Top10Page() {
       setMyEmail(user?.email ?? '')
       const { data } = await supabase.from('profiles').select('email, full_name, first_name')
       setProfiles(data ?? [])
+      await fetchCustomTopics()
     }
     boot()
-  }, [])
+  }, [fetchCustomTopics])
 
   // ── Load topic data ──────────────────────────────────────────────────────────
   const loadTopic = useCallback(async (t: string, email: string) => {
@@ -138,6 +148,7 @@ export default function Top10Page() {
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
     loadTopic(topic, myEmail)
+    fetchCustomTopics()
   }
 
   // ── Consensus calculation ────────────────────────────────────────────────────
@@ -203,7 +214,22 @@ export default function Top10Page() {
               </button>
             ))}
 
-            {/* Custom topic */}
+            {/* Existing custom topics (created by anyone in the family) */}
+            {customTopics.map(t => (
+              <button
+                key={t}
+                onClick={() => { setTopic(t); setShowCustom(false) }}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border whitespace-nowrap ${
+                  topic === t && !showCustom
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100'
+                }`}
+              >
+                📋 {t}
+              </button>
+            ))}
+
+            {/* Add a new custom topic */}
             {showCustom ? (
               <input
                 autoFocus
@@ -211,27 +237,16 @@ export default function Top10Page() {
                 onChange={e => setCustomInput(e.target.value)}
                 onBlur={confirmCustom}
                 onKeyDown={e => e.key === 'Enter' && confirmCustom()}
-                placeholder="Topic name…"
+                placeholder="New topic…"
                 className="px-4 py-2 rounded-full text-sm border-2 border-indigo-400 outline-none w-36"
               />
             ) : (
-              <>
-                {/* Show active custom topic pill */}
-                {!PRESET_TOPICS.find(t => t.key === topic) && (
-                  <button
-                    onClick={() => setShowCustom(true)}
-                    className="px-4 py-2 rounded-full text-sm font-medium border border-indigo-600 bg-indigo-600 text-white whitespace-nowrap"
-                  >
-                    📋 {topic}
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowCustom(true)}
-                  className="px-4 py-2 rounded-full text-sm font-medium border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition-colors whitespace-nowrap"
-                >
-                  + Custom
-                </button>
-              </>
+              <button
+                onClick={() => setShowCustom(true)}
+                className="px-4 py-2 rounded-full text-sm font-medium border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition-colors whitespace-nowrap"
+              >
+                + New topic
+              </button>
             )}
           </div>
         </div>
