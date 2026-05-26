@@ -359,7 +359,7 @@ export default function ScrabblePage() {
   // ── Active game
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-amber-50 pb-32">
+      <div className="min-h-screen bg-amber-50 pb-56 md:pb-40">
 
         {/* Header */}
         <div className="bg-white border-b border-amber-200 px-4 py-3 flex items-center justify-between">
@@ -473,7 +473,7 @@ export default function ScrabblePage() {
 
         {/* My rack + actions */}
         {me && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-amber-300 shadow-lg p-3 z-30 max-w-xl mx-auto">
+          <div className="fixed bottom-16 md:bottom-0 left-0 right-0 bg-white border-t-2 border-amber-300 shadow-lg p-3 z-40 max-w-xl mx-auto">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-bold text-amber-900">
                 🎯 Your tiles {isMyTurn ? '· YOUR MOVE' : '· wait for your turn'}
@@ -527,9 +527,9 @@ export default function ScrabblePage() {
           </div>
         )}
 
-        {/* Notice toast */}
+        {/* Notice toast — positioned above the rack (which sits above the nav bar on mobile) */}
         {notice && (
-          <div className="fixed bottom-28 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm font-semibold px-5 py-2.5 rounded-full shadow-xl z-50">
+          <div className="fixed bottom-48 md:bottom-32 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm font-semibold px-5 py-2.5 rounded-full shadow-xl z-50">
             {notice}
           </div>
         )}
