@@ -359,7 +359,7 @@ export default function ScrabblePage() {
   // ── Active game
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-amber-50 pb-56 md:pb-40">
+      <div className="min-h-screen bg-amber-50 pb-32 md:pb-20">
 
         {/* Header */}
         <div className="bg-white border-b border-amber-200 px-4 py-3 flex items-center justify-between">
@@ -471,28 +471,40 @@ export default function ScrabblePage() {
           </div>
         )}
 
-        {/* My rack + actions */}
+        {/* BIG sticky confirm banner at TOP when tiles are placed — impossible to miss */}
+        {me && placed.length > 0 && (
+          <div className="sticky top-0 z-50 bg-amber-600 text-white shadow-lg flex items-center gap-2 px-3 py-2">
+            <span className="text-sm font-semibold flex-1">
+              {placed.length} {placed.length === 1 ? 'tile' : 'tiles'} placed
+            </span>
+            <button
+              onClick={cancelPlacement}
+              disabled={busy}
+              className="bg-white/20 hover:bg-white/30 text-white text-sm font-semibold px-3 py-1.5 rounded-lg"
+            >
+              ✕ Cancel
+            </button>
+            <button
+              onClick={submitMove}
+              disabled={busy || !isMyTurn}
+              className="bg-white text-amber-700 font-black px-4 py-1.5 rounded-lg shadow active:scale-95"
+            >
+              {busy ? '…' : '✓ Submit'}
+            </button>
+          </div>
+        )}
+
+        {/* Compact rack at bottom — single row, fits any phone */}
         {me && (
-          <div className="fixed bottom-16 md:bottom-0 left-0 right-0 bg-white border-t-2 border-amber-300 shadow-lg p-3 z-40 max-w-xl mx-auto">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-bold text-amber-900">
-                🎯 Your tiles {isMyTurn ? '· YOUR MOVE' : '· wait for your turn'}
-              </p>
-              {placed.length > 0 && (
-                <button onClick={cancelPlacement} className="text-xs text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
-              )}
-            </div>
+          <div className="fixed bottom-16 md:bottom-0 left-0 right-0 bg-white border-t-2 border-amber-300 shadow-lg px-2 py-2 z-40 max-w-xl mx-auto">
             {me.rack.length === 0 ? (
-              <div className="text-center py-3">
-                <p className="text-sm text-gray-500 mb-2">No tiles loaded — try refreshing the page</p>
-                <button onClick={() => fetchGame()} className="text-xs text-indigo-600 font-semibold">
-                  🔄 Refresh
-                </button>
+              <div className="flex items-center justify-between px-2 py-1">
+                <p className="text-xs text-gray-500">No tiles loaded</p>
+                <button onClick={() => fetchGame()} className="text-xs text-indigo-600 font-semibold">🔄 Refresh</button>
               </div>
             ) : (
-              <>
-                {/* Tiles row — scrollable horizontally on small screens so they're always visible */}
-                <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
+              <div className="flex items-center gap-1">
+                <div className="flex gap-1 overflow-x-auto flex-1">
                   {me.rack.map((letter, idx) => {
                     const isUsed = placed.some(p => p.rackIdx === idx)
                     const isSelected = selectedRackIdx === idx
@@ -501,28 +513,27 @@ export default function ScrabblePage() {
                         key={idx}
                         disabled={isUsed || !isMyTurn}
                         onClick={() => clickRackTile(idx)}
-                        className={`shrink-0 w-11 h-13 rounded-md flex flex-col items-center justify-center font-black text-amber-950 transition-all shadow-sm ${
+                        className={`shrink-0 rounded-md flex flex-col items-center justify-center font-black text-amber-950 transition-all shadow-sm ${
                           isUsed ? 'bg-gray-200 opacity-40' :
                           isSelected ? 'bg-yellow-400 -translate-y-1 ring-2 ring-amber-600' :
                           'bg-amber-200 hover:bg-amber-300'
                         }`}
-                        style={{ width: 44, height: 52 }}
+                        style={{ width: 40, height: 46 }}
                       >
-                        <span className="text-xl leading-none">{letter}</span>
-                        <span className="text-[9px] leading-none mt-0.5">{LETTER_VALUES[letter] ?? 0}</span>
+                        <span className="text-lg leading-none">{letter}</span>
+                        <span className="text-[8px] leading-none mt-0.5">{LETTER_VALUES[letter] ?? 0}</span>
                       </button>
                     )
                   })}
                 </div>
-                {/* Submit button on its own line — full width on mobile, always visible */}
                 <button
                   onClick={submitMove}
                   disabled={busy || !isMyTurn || placed.length === 0}
-                  className="w-full mt-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-30 text-white font-bold py-3 rounded-xl text-base shadow-md"
+                  className="shrink-0 bg-amber-600 hover:bg-amber-700 disabled:opacity-30 text-white font-bold px-3 rounded-md shadow-md self-stretch text-xs"
                 >
-                  {busy ? 'Saving…' : placed.length === 0 ? (isMyTurn ? 'Place a tile to submit' : 'Not your turn') : `Submit (${placed.length} ${placed.length === 1 ? 'tile' : 'tiles'})`}
+                  {busy ? '…' : placed.length === 0 ? (isMyTurn ? '▲' : 'Wait') : `✓ ${placed.length}`}
                 </button>
-              </>
+              </div>
             )}
           </div>
         )}
