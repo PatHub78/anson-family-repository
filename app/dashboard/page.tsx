@@ -237,12 +237,23 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data } = await supabase
-        .from("submissions")
-        .select("full_name, steps, time_exercises, pages_read, distance_biked, submission_date")
-        .order("submission_date", { ascending: false });
-
-      setRows((data as Submission[]) ?? []);
+      // Supabase's PostgREST defaults to 1000 rows per response. We have to
+      // page through explicitly to get every submission.
+      const PAGE = 1000;
+      const all: Submission[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("submissions")
+          .select("full_name, steps, time_exercises, pages_read, distance_biked, submission_date")
+          .order("submission_date", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error || !data || data.length === 0) break;
+        all.push(...(data as Submission[]));
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      setRows(all);
       setLoading(false);
     };
     fetchData();
